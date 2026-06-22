@@ -1,0 +1,83 @@
+﻿# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.mplcache/
+
+# Simulation temporary outputs
+tmp/
+*.partial.csv
+
+# Unrelated or generated directories
+node_modules/
+slprj/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+Thumbs.db
+.DS_Store
+
+# GEKKO solver temporary files
+gk*.csv
+gk*.t*.txt
+auto*.t*.txt
+
+# PyBaMM config cache is redirected under outputs/pybamm_config by thermal_batch_config.py.
+
+
+# Codex / local agent state
+.codex/
+
+# Python caches
+**/__pycache__/
+**pycache**/
+
+# Data, outputs, and generated analysis artifacts
+data/
+output/
+outputs/
+analysis_outputs/
+figures/
+
+# Large binary artifacts
+*.csv
+*.xlsx
+*.xls
+*.mat
+*.slx.autosave
+*.asv
+*.fig
+*.png
+*.jpg
+*.jpeg
+*.bmp
+*.gif
+*.tif
+*.tiff
+*.mp4
+*.avi
+*.mov
+*.zip
+*.7z
+*.rar
+
+# Simulink / MATLAB generated files
+slprj/
+*.mex*
+*.mexa64
+*.mexw64
+*.mlappinstall
+
+# Large or external work areas
+legacy/
+simulink-agentic-toolkit/
+simulink-agentic-toolkit-main/
