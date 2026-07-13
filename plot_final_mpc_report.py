@@ -292,11 +292,14 @@ def plot_mpc_flow_overview_2x2(summary=None):
         legend_labels,
         frameon=False,
         ncol=4,
-        fontsize=7.5,
+        fontsize=11,
         loc="upper center",
         bbox_to_anchor=(0.5, 0.995),
+        columnspacing=1.8,
+        handlelength=2.4,
+        handletextpad=0.6,
     )
-    fig.tight_layout(rect=(0, 0, 1, 0.955), pad=0.8, h_pad=1.0, w_pad=1.1)
+    fig.tight_layout(rect=(0, 0, 1, 0.94), pad=0.8, h_pad=1.0, w_pad=1.1)
     return fig
 
 
