@@ -226,14 +226,18 @@ def plot_mpc_flow_overview_2x2(summary=None):
     legend_labels = None
     for ax, scene in zip(axes[0], SCENES):
         twin = ax.twinx()
-        for flow, color in (("single", "#6BAED6"), ("double", "#08519C")):
+        flow_colors = {
+            "single": ("#6BAED6", "#F28E2B"),
+            "double": ("#08519C", "#D62728"),
+        }
+        for flow, (temperature_color, delta_color) in flow_colors.items():
             frame = load_case(scene, "mpc", flow)
             linestyle, _ = FLOW_STYLES[flow]
             ax.plot(
                 _minutes(frame),
                 _values(frame, "T_cell_mean_C"),
                 linestyle,
-                color=color,
+                color=temperature_color,
                 linewidth=1.15,
                 alpha=0.58,
                 label=f"{FLOW_LABELS[flow]}平均温度",
@@ -242,16 +246,17 @@ def plot_mpc_flow_overview_2x2(summary=None):
                 _minutes(frame),
                 _values(frame, "Delta_T_cell_C"),
                 linestyle,
-                color=color,
+                color=delta_color,
                 linewidth=2.05,
                 label=f"{FLOW_LABELS[flow]}最大温差",
             )
         ax.set_xlabel("时间 (min)", fontsize=9)
         ax.set_ylabel("电池平均温度 (℃)", fontsize=9)
-        twin.set_ylabel("最大温差 (℃)", fontsize=9)
+        twin.set_ylabel("最大温差 (℃)", fontsize=9, color="#B54A00")
         ax.text(0.02, 0.94, SCENE_LABELS[scene], transform=ax.transAxes, va="top", fontsize=10)
         ax.tick_params(labelsize=8)
-        twin.tick_params(labelsize=8)
+        twin.tick_params(labelsize=8, colors="#B54A00")
+        twin.spines["right"].set_color("#B54A00")
         handles1, labels1 = ax.get_legend_handles_labels()
         handles2, labels2 = twin.get_legend_handles_labels()
         if legend_handles is None:
