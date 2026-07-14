@@ -25,6 +25,7 @@ REQUIRED_COLUMNS = (
     "q_cond_ss_w",
     "q_cond_eff_w",
 )
+VALID_SPLITS = frozenset({"train", "validation", "test"})
 
 
 def assign_scenario_splits(
@@ -59,6 +60,16 @@ def validate_identification_frame(frame: pd.DataFrame) -> None:
     ]
     if missing_columns:
         raise ValueError(f"Missing required columns: {missing_columns}")
+
+    invalid_splits = sorted(
+        {
+            repr(value)
+            for value in frame["split"]
+            if not isinstance(value, str) or value not in VALID_SPLITS
+        }
+    )
+    if invalid_splits:
+        raise ValueError(f"Invalid split values: {invalid_splits}")
 
     leaked_scenarios = frame.groupby("scenario_id")["split"].nunique()
     leaked_scenarios = leaked_scenarios[leaked_scenarios > 1].index.tolist()

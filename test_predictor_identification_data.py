@@ -17,6 +17,11 @@ class PredictorIdentificationDataTest(unittest.TestCase):
         self.assertEqual(sum(value == "validation" for value in first.values()), 2)
         self.assertEqual(sum(value == "test" for value in first.values()), 2)
 
+    def test_split_deduplicates_scenario_ids(self):
+        splits = assign_scenario_splits(["same", "same", "other"])
+        self.assertEqual(set(splits), {"same", "other"})
+        self.assertEqual(len(splits), 2)
+
     def test_validation_rejects_missing_columns_and_split_leakage(self):
         frame = pd.DataFrame([{name: 0.0 for name in REQUIRED_COLUMNS}])
         frame["scenario_id"] = "same"
@@ -27,6 +32,24 @@ class PredictorIdentificationDataTest(unittest.TestCase):
             validate_identification_frame(leaked)
         with self.assertRaises(ValueError):
             validate_identification_frame(frame.drop(columns=["q_evap_eff_w"]))
+
+    def test_validation_rejects_invalid_split_values(self):
+        frame = pd.DataFrame([{name: 0.0 for name in REQUIRED_COLUMNS}])
+        frame["scenario_id"] = "same"
+        for invalid_split in ("production", 1):
+            with self.subTest(split=invalid_split):
+                with self.assertRaises(ValueError) as raised:
+                    validate_identification_frame(frame.assign(split=invalid_split))
+                self.assertIn(repr(invalid_split), str(raised.exception))
+
+    def test_validation_rejects_nan_in_every_required_column(self):
+        frame = pd.DataFrame([{name: 0.0 for name in REQUIRED_COLUMNS}])
+        frame["scenario_id"] = "same"
+        frame["split"] = "train"
+        for column in REQUIRED_COLUMNS:
+            with self.subTest(column=column):
+                with self.assertRaises(ValueError):
+                    validate_identification_frame(frame.assign(**{column: pd.NA}))
 
 
 if __name__ == "__main__":
