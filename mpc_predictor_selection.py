@@ -54,7 +54,7 @@ def load_predictor_artifact(path: str | Path, expected_type: object) -> dict:
     try:
         with artifact_path.open("r", encoding="utf-8") as artifact_file:
             artifact = json.load(artifact_file)
-    except (OSError, json.JSONDecodeError) as exc:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise PredictorArtifactError(
             f"Unable to load predictor artifact: {artifact_path}"
         ) from exc
@@ -67,7 +67,8 @@ def load_predictor_artifact(path: str | Path, expected_type: object) -> dict:
         raise PredictorArtifactError(
             "Predictor artifact model_type does not match expected_type"
         )
-    if artifact.get("schema_version") != 1:
+    schema_version = artifact.get("schema_version")
+    if type(schema_version) is not int or schema_version != 1:
         raise PredictorArtifactError("Unsupported predictor artifact schema_version")
 
     return artifact

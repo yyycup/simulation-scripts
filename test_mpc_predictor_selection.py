@@ -40,6 +40,28 @@ class PredictorSelectionTests(unittest.TestCase):
             with self.assertRaises(PredictorArtifactError):
                 load_predictor_artifact(artifact_path, expected_type=LPV_L)
 
+    def test_invalid_utf8_is_reported_as_artifact_error(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            artifact_path = Path(temp_dir) / "artifact.json"
+            artifact_path.write_bytes(b"\xff")
+
+            with self.assertRaises(PredictorArtifactError):
+                load_predictor_artifact(artifact_path, expected_type=PHYSICS_P)
+
+    def test_schema_version_must_be_integer_one(self):
+        invalid_versions = (None, True, 1.0)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            artifact_path = Path(temp_dir) / "artifact.json"
+            for version in invalid_versions:
+                with self.subTest(schema_version=version):
+                    artifact = {"model_type": "physics_p"}
+                    if version is not None:
+                        artifact["schema_version"] = version
+                    artifact_path.write_text(json.dumps(artifact), encoding="utf-8")
+
+                    with self.assertRaises(PredictorArtifactError):
+                        load_predictor_artifact(artifact_path, expected_type=PHYSICS_P)
+
 
 if __name__ == "__main__":
     unittest.main()
