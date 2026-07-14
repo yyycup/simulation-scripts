@@ -1,4 +1,5 @@
 import argparse
+from collections.abc import Mapping
 from dataclasses import dataclass
 import hashlib
 import json
@@ -478,6 +479,10 @@ def _validate_dynamic_scenario(spec):
         spec.steps, (int, np.integer)
     ) or spec.steps <= 0:
         raise ValueError(f"{spec.scenario_id}: steps must be a positive integer")
+    if isinstance(spec.seed, (bool, np.bool_)) or not isinstance(
+        spec.seed, (int, np.integer)
+    ):
+        raise ValueError(f"{spec.scenario_id}: seed must be a non-boolean integer")
     if float(spec.dt_s) != 5.0:
         raise ValueError(f"{spec.scenario_id}: dt_s must be exactly 5 seconds")
     if spec.excitation_kind not in {
@@ -488,9 +493,13 @@ def _validate_dynamic_scenario(spec):
         raise ValueError(
             f"{spec.scenario_id}: invalid excitation_kind={spec.excitation_kind!r}"
         )
-    if spec.flow_direction not in (-1, 1):
+    if (
+        isinstance(spec.flow_direction, (bool, np.bool_))
+        or not isinstance(spec.flow_direction, (int, np.integer))
+        or spec.flow_direction not in (-1, 1)
+    ):
         raise ValueError(
-            f"{spec.scenario_id}: flow_direction must be +1 or -1"
+            f"{spec.scenario_id}: flow_direction must be integer +1 or -1"
         )
     scalar_names = (
         "initial_soc",
@@ -659,10 +668,10 @@ def run_dynamic_scenario(spec, split="train"):
             thermal_step, "T_pipe_return_K", spec.scenario_id, index
         )
         dynamic_state = thermal_step.get("dynamic_state")
-        if dynamic_state is None:
+        if not isinstance(dynamic_state, Mapping):
             raise ValueError(
                 f"{spec.scenario_id} step {index}: required thermal output "
-                "dynamic_state=missing"
+                "dynamic_state is missing or not a mapping"
             )
 
         pack.step(
@@ -693,10 +702,17 @@ def run_dynamic_scenario(spec, split="train"):
             spec.scenario_id,
             index,
         )
-        n_fan_ss = float(staged_fan_speed(n_comp_eff))
+        try:
+            n_fan_ss = float(staged_fan_speed(n_comp_eff))
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"{spec.scenario_id} step {index}: diagnostic n_fan_ss "
+                "is not numeric"
+            ) from exc
         if not math.isfinite(n_fan_ss):
             raise ValueError(
-                f"{spec.scenario_id} step {index}: staged fan speed is not finite"
+                f"{spec.scenario_id} step {index}: diagnostic n_fan_ss "
+                "is not finite"
             )
         cycle = run_refrigeration_cycle(
             n_comp_eff,

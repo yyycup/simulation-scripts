@@ -1,9 +1,12 @@
+from dataclasses import replace
 from io import StringIO
 from pathlib import Path
+from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import call, patch
 
 import numpy as np
+import pandas as pd
 
 from predictor_identification_data import REQUIRED_COLUMNS
 from generate_predictor_identification_data import (
@@ -75,6 +78,94 @@ class GeneratePredictorIdentificationDataTest(unittest.TestCase):
             ["generate_predictor_identification_data.py", "--dataset", "all"],
         ), patch("sys.stderr", new_callable=StringIO):
             self.assertEqual(_parse_args().dataset, "all")
+
+    @staticmethod
+    def _cli_rows(count, dataset_kind):
+        rows = []
+        for index in range(count):
+            row = {column: 1.0 for column in REQUIRED_COLUMNS}
+            row.update(
+                {
+                    "scenario_id": f"{dataset_kind}_{index // 20}",
+                    "split": "train",
+                    "flow_direction": 1,
+                    "dataset_kind": dataset_kind,
+                }
+            )
+            rows.append(row)
+        return rows
+
+    @patch("generate_predictor_identification_data.generate_dynamic_rows")
+    @patch("generate_predictor_identification_data.build_dynamic_scenarios")
+    def test_cli_dynamic_writes_only_index_free_utf8_dynamic_csv(
+        self, build_scenarios, generate_rows
+    ):
+        build_scenarios.return_value = [object()]
+        generate_rows.return_value = self._cli_rows(80, "dynamic")
+        with TemporaryDirectory() as tmp, patch(
+            "sys.argv",
+            [
+                "generate_predictor_identification_data.py",
+                "--dataset",
+                "dynamic",
+                "--mode",
+                "smoke",
+                "--output-root",
+                tmp,
+            ],
+        ):
+            from generate_predictor_identification_data import main
+
+            main()
+            output_root = Path(tmp)
+            paths = sorted(path.name for path in output_root.glob("*.csv"))
+            frame = pd.read_csv(output_root / "dynamic_smoke.csv", encoding="utf-8")
+
+        self.assertEqual(paths, ["dynamic_smoke.csv"])
+        self.assertEqual(len(frame), 80)
+        self.assertFalse(any(column.startswith("Unnamed") for column in frame))
+        self.assertTrue(set(REQUIRED_COLUMNS).issubset(frame.columns))
+
+    @patch("generate_predictor_identification_data.generate_dynamic_rows")
+    @patch("generate_predictor_identification_data.build_dynamic_scenarios")
+    @patch("generate_predictor_identification_data.generate_steady_rows")
+    @patch("generate_predictor_identification_data.build_steady_grid")
+    def test_cli_all_writes_index_free_utf8_steady_and_dynamic_csvs(
+        self,
+        build_grid,
+        generate_steady,
+        build_scenarios,
+        generate_dynamic,
+    ):
+        build_grid.return_value = [object()]
+        build_scenarios.return_value = [object()]
+        generate_steady.return_value = self._cli_rows(2, "steady")
+        generate_dynamic.return_value = self._cli_rows(80, "dynamic")
+        with TemporaryDirectory() as tmp, patch(
+            "sys.argv",
+            [
+                "generate_predictor_identification_data.py",
+                "--dataset",
+                "all",
+                "--mode",
+                "smoke",
+                "--output-root",
+                tmp,
+            ],
+        ):
+            from generate_predictor_identification_data import main
+
+            main()
+            output_root = Path(tmp)
+            paths = sorted(path.name for path in output_root.glob("*.csv"))
+            steady = pd.read_csv(output_root / "steady_smoke.csv", encoding="utf-8")
+            dynamic = pd.read_csv(output_root / "dynamic_smoke.csv", encoding="utf-8")
+
+        self.assertEqual(paths, ["dynamic_smoke.csv", "steady_smoke.csv"])
+        self.assertEqual((len(steady), len(dynamic)), (2, 80))
+        for frame in (steady, dynamic):
+            self.assertFalse(any(column.startswith("Unnamed") for column in frame))
+            self.assertTrue(set(REQUIRED_COLUMNS).issubset(frame.columns))
 
     def test_windows_runtime_path_is_prepared_before_pack_import(self):
         source = Path("generate_predictor_identification_data.py").read_text(
@@ -387,6 +478,22 @@ class DynamicRolloutTest(unittest.TestCase):
     def setUp(self):
         self.FakePack.instances.clear()
 
+    def test_dynamic_spec_rejects_boolean_or_noninteger_direction_and_seed(self):
+        invalid_values = (
+            ("flow_direction", True),
+            ("flow_direction", False),
+            ("flow_direction", 1.0),
+            ("flow_direction", -1.0),
+            ("seed", True),
+            ("seed", 17.5),
+        )
+        for field, value in invalid_values:
+            with self.subTest(field=field, value=value):
+                with self.assertRaisesRegex(ValueError, field):
+                    run_dynamic_scenario(
+                        replace(self._spec(), **{field: value}), split="train"
+                    )
+
     @patch("generate_predictor_identification_data.run_refrigeration_cycle")
     @patch("generate_predictor_identification_data.pump_model")
     @patch("generate_predictor_identification_data.staged_fan_speed")
@@ -422,6 +529,8 @@ class DynamicRolloutTest(unittest.TestCase):
         self.assertEqual(row["q_cond_ss_w"], 1200.0)
         self.assertEqual(row["t_cool_c"], 27.0)
         self.assertEqual(row["t_batt_c"], 30.0)
+        self.assertEqual(row["scenario_seed"], 41)
+        self.assertIs(type(row["scenario_seed"]), int)
         self.assertEqual(row["dataset_kind"], "dynamic")
         self.assertEqual(
             row["source_model"], "thermal_loop.simulate_thermal_loop_step"
@@ -442,6 +551,95 @@ class DynamicRolloutTest(unittest.TestCase):
         )
         self.assertEqual(fake_pack.step_calls[0][2], 308.15)
         self.assertTrue(all(not history for history in fake_pack.history))
+
+    @patch("generate_predictor_identification_data.run_refrigeration_cycle")
+    @patch("generate_predictor_identification_data.pump_model")
+    @patch("generate_predictor_identification_data.staged_fan_speed")
+    @patch("generate_predictor_identification_data.simulate_thermal_loop_step")
+    @patch("generate_predictor_identification_data.initialize_refrigeration_dynamic_state")
+    @patch("generate_predictor_identification_data.BatteryPack")
+    def test_dynamic_thermal_step_rejects_each_missing_or_invalid_required_output(
+        self,
+        battery_pack,
+        initialize_state,
+        simulate_step,
+        staged_fan,
+        pump_model,
+        run_cycle,
+    ):
+        battery_pack.side_effect = self.FakePack
+        initialize_state.return_value = {"token": "initial"}
+        staged_fan.return_value = 777.0
+        pump_model.return_value = (0.23, 23.0)
+        run_cycle.return_value = self._cycle_result()
+        invalid_values = {
+            "T_tank_K": float("nan"),
+            "T_plate_K_array": np.array([299.15]),
+            "dynamic_state": [],
+            "N_comp_eff": float("nan"),
+            "N_pump_eff": float("nan"),
+            "Q_dot_evap": float("nan"),
+            "Q_dot_cond": float("nan"),
+            "T_pipe_supply_K": float("nan"),
+            "T_pipe_return_K": float("nan"),
+        }
+
+        for key, invalid_value in invalid_values.items():
+            for case in ("missing", "invalid"):
+                with self.subTest(key=key, case=case):
+                    result = self._thermal_result()
+                    if case == "missing":
+                        result.pop(key)
+                    else:
+                        result[key] = invalid_value
+                    simulate_step.return_value = result
+
+                    with self.assertRaises(ValueError) as raised:
+                        run_dynamic_scenario(self._spec(), split="train")
+
+                    message = str(raised.exception)
+                    self.assertIn("dynamic_mock", message)
+                    self.assertIn("step 0", message)
+                    self.assertIn(key, message)
+
+    @patch("generate_predictor_identification_data.run_refrigeration_cycle")
+    @patch("generate_predictor_identification_data.pump_model")
+    @patch("generate_predictor_identification_data.staged_fan_speed")
+    @patch("generate_predictor_identification_data.simulate_thermal_loop_step")
+    @patch("generate_predictor_identification_data.initialize_refrigeration_dynamic_state")
+    @patch("generate_predictor_identification_data.BatteryPack")
+    def test_dynamic_diagnostics_reject_nonfinite_pump_flow_and_fan_speed(
+        self,
+        battery_pack,
+        initialize_state,
+        simulate_step,
+        staged_fan,
+        pump_model,
+        run_cycle,
+    ):
+        battery_pack.side_effect = self.FakePack
+        initialize_state.return_value = {"token": "initial"}
+        simulate_step.return_value = self._thermal_result()
+        run_cycle.return_value = self._cycle_result()
+
+        for diagnostic, key in (("pump", "m_dot_cool"), ("fan", "n_fan_ss")):
+            with self.subTest(diagnostic=diagnostic):
+                pump_model.return_value = (
+                    (float("nan"), 23.0)
+                    if diagnostic == "pump"
+                    else (0.23, 23.0)
+                )
+                staged_fan.return_value = (
+                    float("nan") if diagnostic == "fan" else 777.0
+                )
+
+                with self.assertRaises(ValueError) as raised:
+                    run_dynamic_scenario(self._spec(), split="train")
+
+                message = str(raised.exception)
+                self.assertIn("dynamic_mock", message)
+                self.assertIn("step 0", message)
+                self.assertIn(key, message)
 
     @patch("generate_predictor_identification_data.run_refrigeration_cycle")
     @patch("generate_predictor_identification_data.pump_model", return_value=(0.23, 23.0))
