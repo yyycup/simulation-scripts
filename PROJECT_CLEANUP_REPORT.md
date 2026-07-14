@@ -352,3 +352,42 @@ No files were staged, committed, pushed, or connected to a remote during this cl
 - Credential-pattern scan: no matching files.
 - GitHub target `https://github.com/yyycup/simulation-scripts.git`: reachable and empty before first push.
 - `.gitignore` excludes result folders, data, archives, local agent state, caches, GEKKO temp folders, and external toolkits.
+
+## 2026-07-14 GitHub可运行基线与永久清理
+
+完成时间：2026-07-14 10:29:32 +08:00。
+
+### 可独立运行仓库
+
+- 将4个运行必需的小型模型数据文件纳入 `model_data/`，并将代码默认路径改为该受Git管理目录。
+- 新增 `environment.yml`；Conda dry-run依赖求解成功。
+- 新增中文 `README.md`，记录环境安装、核心入口、扫描、诊断、绘图和验证命令。
+- 推送前全部根目录Python文件通过编译，选定回归套件共34项测试通过。
+- 清理前远程安全基线：`c9e308168f0fc8e4238066a599c9e30fdce4aa1d`，已验证与GitHub `main` 一致。
+
+### 已停止的旧测试进程
+
+- PID 48092：`python -m unittest test_pid_local_refinement -v`，启动于2026-07-11 20:19:37。
+- PID 36696：两个指定 `test_pid_local_refinement` 测试，启动于2026-07-11 20:20:14。
+
+终止前重新核对了进程名、命令行和启动时间；未终止其他Python进程。
+
+### 永久删除统计
+
+| 根目录直接子目录 | 文件数 | 字节数 |
+|---|---:|---:|
+| `__pycache__/` | 125 | 1,251,784 |
+| `_archive/` | 1,258 | 37,309,817 |
+| `_gekko_tmp_ambient25_preview/` | 58 | 1,230,584 |
+| `_gekko_tmp_dare_cleanup/` | 90 | 1,247,813 |
+| `_gekko_tmp_peak_flow_comparison/` | 77 | 623,092 |
+| `_gekko_tmp_predictive_delta_t_scan/` | 0 | 0 |
+| `_gekko_tmp_smoke_20260708/` | 0 | 0 |
+| `tmp0ba_eu68/` | 0 | 0 |
+| `tmp2rd14is8/` | 0 | 0 |
+| `tmpmgjttbv6/` | 0 | 0 |
+| `tmprlrvl59z/` | 0 | 0 |
+| `tmptob48owj/` | 0 | 0 |
+| **合计** | **1,608** | **41,663,090** |
+
+上述12个目录均在确认其为项目根目录直接子目录后，以绝对路径逐项永久删除。`outputs/`、`输出结果/`、`data/` 与 `model_data/` 均保留。删除后模型数据和candidate B相关4项回归测试通过，且测试过程未重新生成 `__pycache__/`。
