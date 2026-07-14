@@ -578,10 +578,15 @@ class DynamicRolloutTest(unittest.TestCase):
             "dynamic_state": [],
             "N_comp_eff": float("nan"),
             "N_pump_eff": float("nan"),
+            "N_fan_cmd": float("nan"),
+            "N_fan_eff": float("nan"),
             "Q_dot_evap": float("nan"),
             "Q_dot_cond": float("nan"),
             "T_pipe_supply_K": float("nan"),
             "T_pipe_return_K": float("nan"),
+            "W_pump_val": float("nan"),
+            "W_comp_real": float("nan"),
+            "W_fan_real": float("nan"),
         }
 
         for key, invalid_value in invalid_values.items():
@@ -608,7 +613,7 @@ class DynamicRolloutTest(unittest.TestCase):
     @patch("generate_predictor_identification_data.simulate_thermal_loop_step")
     @patch("generate_predictor_identification_data.initialize_refrigeration_dynamic_state")
     @patch("generate_predictor_identification_data.BatteryPack")
-    def test_dynamic_diagnostics_reject_nonfinite_pump_flow_and_fan_speed(
+    def test_dynamic_diagnostics_reject_nonfinite_pump_outputs_and_fan_speed(
         self,
         battery_pack,
         initialize_state,
@@ -622,16 +627,15 @@ class DynamicRolloutTest(unittest.TestCase):
         simulate_step.return_value = self._thermal_result()
         run_cycle.return_value = self._cycle_result()
 
-        for diagnostic, key in (("pump", "m_dot_cool"), ("fan", "n_fan_ss")):
+        diagnostic_cases = (
+            ("pump_flow", "m_dot_cool", (float("nan"), 23.0), 777.0),
+            ("pump_power", "w_pump", (0.23, float("inf")), 777.0),
+            ("fan", "n_fan_ss", (0.23, 23.0), float("nan")),
+        )
+        for diagnostic, key, pump_result, fan_result in diagnostic_cases:
             with self.subTest(diagnostic=diagnostic):
-                pump_model.return_value = (
-                    (float("nan"), 23.0)
-                    if diagnostic == "pump"
-                    else (0.23, 23.0)
-                )
-                staged_fan.return_value = (
-                    float("nan") if diagnostic == "fan" else 777.0
-                )
+                pump_model.return_value = pump_result
+                staged_fan.return_value = fan_result
 
                 with self.assertRaises(ValueError) as raised:
                     run_dynamic_scenario(self._spec(), split="train")
@@ -647,7 +651,7 @@ class DynamicRolloutTest(unittest.TestCase):
     @patch("generate_predictor_identification_data.simulate_thermal_loop_step")
     @patch("generate_predictor_identification_data.initialize_refrigeration_dynamic_state", return_value={})
     @patch("generate_predictor_identification_data.BatteryPack")
-    def test_dynamic_diagnostic_rejects_missing_or_nonfinite_critical_values(
+    def test_dynamic_active_cycle_rejects_each_missing_or_nonfinite_required_value(
         self,
         battery_pack,
         _initialize_state,
@@ -658,20 +662,66 @@ class DynamicRolloutTest(unittest.TestCase):
     ):
         battery_pack.side_effect = self.FakePack
         simulate_step.return_value = self._thermal_result()
-        for key, value in (("Q_evap", None), ("Q_cond", float("nan"))):
-            with self.subTest(key=key, value=value):
-                result = self._cycle_result()
-                if value is None:
-                    result.pop(key)
-                else:
-                    result[key] = value
-                run_cycle.return_value = result
-                with self.assertRaises(ValueError) as raised:
-                    run_dynamic_scenario(self._spec(), split="train")
-                message = str(raised.exception)
-                self.assertIn("dynamic_mock", message)
-                self.assertIn("step 0", message)
-                self.assertIn(key, message)
+        critical_keys = (
+            "Q_evap",
+            "Q_cond",
+            "W_comp",
+            "W_fan",
+            "T_cool_out",
+            "T_evap_sat",
+            "T_cond_sat",
+            "Q_hx_potential",
+            "Q_ref_max",
+        )
+        for key in critical_keys:
+            for case, value in (("missing", None), ("nonfinite", float("nan"))):
+                with self.subTest(key=key, case=case):
+                    result = self._cycle_result()
+                    if value is None:
+                        result.pop(key)
+                    else:
+                        result[key] = value
+                    run_cycle.return_value = result
+                    with self.assertRaises(ValueError) as raised:
+                        run_dynamic_scenario(self._spec(), split="train")
+                    message = str(raised.exception)
+                    self.assertIn("dynamic_mock", message)
+                    self.assertIn("step 0", message)
+                    self.assertIn(key, message)
+
+    @patch("generate_predictor_identification_data.run_refrigeration_cycle")
+    @patch("generate_predictor_identification_data.pump_model", return_value=(0.23, 23.0))
+    @patch("generate_predictor_identification_data.staged_fan_speed", return_value=0.0)
+    @patch("generate_predictor_identification_data.simulate_thermal_loop_step")
+    @patch("generate_predictor_identification_data.initialize_refrigeration_dynamic_state", return_value={})
+    @patch("generate_predictor_identification_data.BatteryPack")
+    def test_dynamic_off_cycle_allows_only_missing_capacity_limits(
+        self,
+        battery_pack,
+        _initialize_state,
+        simulate_step,
+        _staged_fan,
+        _pump_model,
+        run_cycle,
+    ):
+        battery_pack.side_effect = self.FakePack
+        thermal_result = self._thermal_result()
+        thermal_result["N_comp_eff"] = 1900.0
+        simulate_step.return_value = thermal_result
+        cycle_result = self._cycle_result()
+        cycle_result.update({"Q_evap": 0.0, "Q_cond": 0.0, "W_comp": 0.0})
+        cycle_result.pop("Q_hx_potential")
+        cycle_result.pop("Q_ref_max")
+        run_cycle.return_value = cycle_result
+        spec = replace(
+            self._spec(), compressor_command_rpm=(1000.0,)
+        )
+
+        row = run_dynamic_scenario(spec, split="train")[0]
+
+        self.assertEqual(row["limit_type"], "compressor_off")
+        self.assertEqual(row["q_hx_potential_w"], 0.0)
+        self.assertEqual(row["q_ref_max_w"], 0.0)
 
     @patch("generate_predictor_identification_data.run_dynamic_scenario")
     @patch("generate_predictor_identification_data.assign_scenario_splits")
