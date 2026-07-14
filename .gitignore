@@ -37,6 +37,7 @@ auto*.t*.txt
 # Codex / local agent state
 .codex/
 .agents/
+.worktrees/
 .git_empty_backup/
 
 # Python caches
