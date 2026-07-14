@@ -36,6 +36,8 @@ auto*.t*.txt
 
 # Codex / local agent state
 .codex/
+.agents/
+.git_empty_backup/
 
 # Python caches
 **/__pycache__/
@@ -45,8 +47,15 @@ auto*.t*.txt
 data/
 output/
 outputs/
+输出结果/
 analysis_outputs/
 figures/
+_archive/
+
+# Local GEKKO and temporary work directories
+tmp*/
+_gekko_tmp_*/
+/nul
 
 # Large binary artifacts
 *.csv

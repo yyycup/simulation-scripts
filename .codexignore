@@ -1,0 +1,12 @@
+﻿_archive/
+outputs/
+data/
+.git/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+tmpr*/
+tmp*/
+_gekko_tmp_*/
+btms_gekko*/
+simulink-agentic-toolkit*/
