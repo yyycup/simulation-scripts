@@ -1,16 +1,24 @@
 import argparse
+from dataclasses import dataclass
 import hashlib
 import json
 import math
 from pathlib import Path
 
+from btms_runtime import ensure_env_library_bin_on_path
+
+ensure_env_library_bin_on_path()
+
+import numpy as np
 import pandas as pd
 import thermal_batch_config as thermal_batch_config_module
 import thermal_loop as thermal_loop_module
 import thermal_system as thermal_system_module
 
+from pack import BatteryPack
 from predictor_identification_data import (
     REQUIRED_COLUMNS,
+    VALID_SPLITS,
     assign_scenario_splits,
     validate_identification_frame,
 )
@@ -23,7 +31,12 @@ from thermal_batch_config import (
     N_PUMP_MAX_RPM,
     N_PUMP_MIN_RPM,
 )
-from thermal_loop import staged_fan_speed
+from thermal_loop import (
+    build_pack_config,
+    initialize_refrigeration_dynamic_state,
+    simulate_thermal_loop_step,
+    staged_fan_speed,
+)
 from thermal_system import pump_model, run_refrigeration_cycle
 
 
@@ -44,6 +57,9 @@ COMPRESSOR_LEVELS_RPM = (
 PUMP_LEVELS_RPM = (1600, 2400, 3200, 4000, 4800)
 COOLANT_LEVELS_C = (20, 25, 30, 35)
 AMBIENT_LEVELS_C = (20, 25, 30, 35, 40)
+DYNAMIC_COMPRESSOR_LEVELS_RPM = (1000.0, 2000.0, 3500.0, 4500.0, 6000.0)
+DYNAMIC_PUMP_LEVELS_RPM = (1600.0, 2400.0, 3200.0, 4000.0, 4800.0)
+DYNAMIC_CURRENT_LEVELS_A = (240.0, 400.0, 560.0)
 
 _CONFIGURATION = {
     "n_comp_min_rpm": float(N_COMP_MIN_RPM),
@@ -96,6 +112,177 @@ _PLANT_MODEL_VERSION = f"sha256:{_PLANT_SOURCE_HASH[:12]}"
 _CONFIGURATION_HASH = build_configuration_hash(
     _CONFIGURATION, _PLANT_SOURCE_HASH
 )
+
+
+@dataclass(frozen=True)
+class DynamicScenarioSpec:
+    scenario_id: str
+    steps: int
+    dt_s: float
+    seed: int
+    excitation_kind: str
+    flow_direction: int
+    initial_soc: float
+    initial_battery_c: float
+    initial_coolant_c: float
+    initial_plate_c: float
+    ambient_c: float
+    compressor_command_rpm: tuple[float, ...]
+    pump_command_rpm: tuple[float, ...]
+    current_a: tuple[float, ...]
+
+
+def ramp_limited_multilevel_sequence(levels, steps, dmax, seed):
+    levels_array = np.asarray(levels, dtype=float)
+    if levels_array.ndim != 1 or levels_array.size == 0:
+        raise ValueError("levels must be a non-empty one-dimensional sequence")
+    if not np.isfinite(levels_array).all():
+        raise ValueError("levels must contain only finite values")
+    if isinstance(steps, bool) or not isinstance(steps, (int, np.integer)):
+        raise ValueError("steps must be a positive integer")
+    if steps <= 0:
+        raise ValueError("steps must be greater than zero")
+    try:
+        dmax_value = float(dmax)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("dmax must be a finite non-negative number") from exc
+    if not math.isfinite(dmax_value) or dmax_value < 0.0:
+        raise ValueError("dmax must be a finite non-negative number")
+
+    rng = np.random.default_rng(seed)
+    targets = rng.choice(levels_array, size=steps)
+    values = np.empty(steps, dtype=float)
+    values[0] = targets[0]
+    for index in range(1, steps):
+        delta = np.clip(
+            targets[index] - values[index - 1], -dmax_value, dmax_value
+        )
+        values[index] = values[index - 1] + delta
+    return values
+
+
+def _dynamic_profiles(excitation_kind, steps, seed):
+    if excitation_kind == "compressor-only":
+        compressor = ramp_limited_multilevel_sequence(
+            DYNAMIC_COMPRESSOR_LEVELS_RPM, steps, 600.0, seed
+        )
+        pump = np.full(steps, 3200.0)
+    elif excitation_kind == "pump-only":
+        compressor = np.full(steps, 3500.0)
+        pump = ramp_limited_multilevel_sequence(
+            DYNAMIC_PUMP_LEVELS_RPM, steps, 300.0, seed + 1
+        )
+    elif excitation_kind == "combined":
+        compressor = ramp_limited_multilevel_sequence(
+            DYNAMIC_COMPRESSOR_LEVELS_RPM, steps, 600.0, seed
+        )
+        pump = ramp_limited_multilevel_sequence(
+            DYNAMIC_PUMP_LEVELS_RPM, steps, 300.0, seed + 1
+        )
+    else:
+        raise ValueError(f"Unsupported excitation kind: {excitation_kind!r}")
+    current = ramp_limited_multilevel_sequence(
+        DYNAMIC_CURRENT_LEVELS_A, steps, 80.0, seed + 2
+    )
+    return tuple(compressor), tuple(pump), tuple(current)
+
+
+def _make_dynamic_spec(
+    scenario_id,
+    steps,
+    seed,
+    excitation_kind,
+    flow_direction,
+    initial_soc,
+    initial_battery_c,
+    initial_coolant_c,
+    initial_plate_c,
+    ambient_c,
+):
+    compressor, pump, current = _dynamic_profiles(
+        excitation_kind, steps, seed
+    )
+    return DynamicScenarioSpec(
+        scenario_id=scenario_id,
+        steps=steps,
+        dt_s=5.0,
+        seed=seed,
+        excitation_kind=excitation_kind,
+        flow_direction=flow_direction,
+        initial_soc=initial_soc,
+        initial_battery_c=initial_battery_c,
+        initial_coolant_c=initial_coolant_c,
+        initial_plate_c=initial_plate_c,
+        ambient_c=ambient_c,
+        compressor_command_rpm=compressor,
+        pump_command_rpm=pump,
+        current_a=current,
+    )
+
+
+def build_dynamic_scenarios(mode="full", seed=20260714):
+    if mode == "smoke":
+        definitions = (
+            ("dynamic_smoke_compressor_only_forward", "compressor-only", 1),
+            ("dynamic_smoke_pump_only_forward", "pump-only", 1),
+            ("dynamic_smoke_combined_forward", "combined", 1),
+            ("dynamic_smoke_combined_reverse", "combined", -1),
+        )
+        return [
+            _make_dynamic_spec(
+                scenario_id=scenario_id,
+                steps=20,
+                seed=seed + index,
+                excitation_kind=kind,
+                flow_direction=direction,
+                initial_soc=0.8,
+                initial_battery_c=31.0,
+                initial_coolant_c=26.0,
+                initial_plate_c=27.0,
+                ambient_c=35.0,
+            )
+            for index, (scenario_id, kind, direction) in enumerate(definitions)
+        ]
+    if mode != "full":
+        raise ValueError(f"Unsupported dynamic-scenario mode: {mode!r}")
+
+    definitions = (
+        ("dynamic_full_comp_low_forward", 120, "compressor-only", 1, 0.95, 24.0, 20.0, 21.0, 20.0),
+        ("dynamic_full_comp_mid_reverse", 150, "compressor-only", -1, 0.75, 32.0, 27.0, 28.0, 30.0),
+        ("dynamic_full_comp_high_forward", 180, "compressor-only", 1, 0.55, 40.0, 34.0, 35.0, 40.0),
+        ("dynamic_full_pump_low_reverse", 120, "pump-only", -1, 0.90, 24.0, 27.0, 28.0, 40.0),
+        ("dynamic_full_pump_mid_forward", 150, "pump-only", 1, 0.70, 32.0, 34.0, 35.0, 20.0),
+        ("dynamic_full_pump_high_reverse", 180, "pump-only", -1, 0.50, 40.0, 20.0, 21.0, 30.0),
+        ("dynamic_full_combined_low_forward", 120, "combined", 1, 0.85, 24.0, 34.0, 21.0, 30.0),
+        ("dynamic_full_combined_mid_reverse", 150, "combined", -1, 0.65, 32.0, 20.0, 28.0, 40.0),
+        ("dynamic_full_combined_high_forward", 180, "combined", 1, 0.45, 40.0, 27.0, 35.0, 20.0),
+        ("dynamic_full_combined_cross_reverse", 150, "combined", -1, 0.80, 32.0, 34.0, 21.0, 30.0),
+    )
+    return [
+        _make_dynamic_spec(
+            scenario_id=scenario_id,
+            steps=steps,
+            seed=seed + index,
+            excitation_kind=kind,
+            flow_direction=direction,
+            initial_soc=initial_soc,
+            initial_battery_c=initial_battery_c,
+            initial_coolant_c=initial_coolant_c,
+            initial_plate_c=initial_plate_c,
+            ambient_c=ambient_c,
+        )
+        for index, (
+            scenario_id,
+            steps,
+            kind,
+            direction,
+            initial_soc,
+            initial_battery_c,
+            initial_coolant_c,
+            initial_plate_c,
+            ambient_c,
+        ) in enumerate(definitions)
+    ]
 
 
 def build_steady_grid(mode="full"):
@@ -268,11 +455,391 @@ def generate_steady_rows(points, seed=20260714):
     return rows
 
 
+def _as_finite_profile(values, expected_steps, name, scenario_id):
+    try:
+        profile = np.asarray(values, dtype=float)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{scenario_id}: {name} must be numeric") from exc
+    if profile.ndim != 1 or profile.size != expected_steps:
+        raise ValueError(
+            f"{scenario_id}: {name} length must equal steps={expected_steps}"
+        )
+    if not np.isfinite(profile).all():
+        raise ValueError(f"{scenario_id}: {name} contains non-finite values")
+    return profile
+
+
+def _validate_dynamic_scenario(spec):
+    if not isinstance(spec, DynamicScenarioSpec):
+        raise ValueError("dynamic scenario must be a DynamicScenarioSpec")
+    if not isinstance(spec.scenario_id, str) or not spec.scenario_id.strip():
+        raise ValueError("dynamic scenario_id must be a non-empty string")
+    if isinstance(spec.steps, bool) or not isinstance(
+        spec.steps, (int, np.integer)
+    ) or spec.steps <= 0:
+        raise ValueError(f"{spec.scenario_id}: steps must be a positive integer")
+    if float(spec.dt_s) != 5.0:
+        raise ValueError(f"{spec.scenario_id}: dt_s must be exactly 5 seconds")
+    if spec.excitation_kind not in {
+        "compressor-only",
+        "pump-only",
+        "combined",
+    }:
+        raise ValueError(
+            f"{spec.scenario_id}: invalid excitation_kind={spec.excitation_kind!r}"
+        )
+    if spec.flow_direction not in (-1, 1):
+        raise ValueError(
+            f"{spec.scenario_id}: flow_direction must be +1 or -1"
+        )
+    scalar_names = (
+        "initial_soc",
+        "initial_battery_c",
+        "initial_coolant_c",
+        "initial_plate_c",
+        "ambient_c",
+    )
+    for name in scalar_names:
+        value = getattr(spec, name)
+        try:
+            number = float(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{spec.scenario_id}: {name} must be finite") from exc
+        if not math.isfinite(number):
+            raise ValueError(f"{spec.scenario_id}: {name} must be finite")
+    if not 0.0 <= float(spec.initial_soc) <= 1.0:
+        raise ValueError(f"{spec.scenario_id}: initial_soc must be in [0, 1]")
+
+    compressor = _as_finite_profile(
+        spec.compressor_command_rpm,
+        spec.steps,
+        "compressor_command_rpm",
+        spec.scenario_id,
+    )
+    pump = _as_finite_profile(
+        spec.pump_command_rpm,
+        spec.steps,
+        "pump_command_rpm",
+        spec.scenario_id,
+    )
+    current = _as_finite_profile(
+        spec.current_a, spec.steps, "current_a", spec.scenario_id
+    )
+    if compressor.min() < 1000.0 or compressor.max() > 6000.0:
+        raise ValueError(
+            f"{spec.scenario_id}: compressor command must be in [1000, 6000] rpm"
+        )
+    if pump.min() < 1600.0 or pump.max() > 4800.0:
+        raise ValueError(
+            f"{spec.scenario_id}: pump command must be in [1600, 4800] rpm"
+        )
+    if compressor.size > 1 and np.max(np.abs(np.diff(compressor))) > 600.0:
+        raise ValueError(
+            f"{spec.scenario_id}: compressor command exceeds 600 rpm/step"
+        )
+    if pump.size > 1 and np.max(np.abs(np.diff(pump))) > 300.0:
+        raise ValueError(
+            f"{spec.scenario_id}: pump command exceeds 300 rpm/step"
+        )
+    if spec.excitation_kind == "compressor-only" and np.ptp(pump) != 0.0:
+        raise ValueError(
+            f"{spec.scenario_id}: compressor-only requires a constant pump command"
+        )
+    if spec.excitation_kind == "pump-only" and np.ptp(compressor) != 0.0:
+        raise ValueError(
+            f"{spec.scenario_id}: pump-only requires a constant compressor command"
+        )
+    return compressor, pump, current
+
+
+def _required_finite_step_value(result, key, scenario_id, step_index):
+    return _required_finite_cycle_value(
+        result, key, f"{scenario_id} step {step_index}"
+    )
+
+
+def _required_finite_array(result, key, scenario_id, step_index, size):
+    if key not in result:
+        raise ValueError(
+            f"{scenario_id} step {step_index}: required thermal output {key}=missing"
+        )
+    try:
+        values = np.asarray(result[key], dtype=float)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"{scenario_id} step {step_index}: required thermal output "
+            f"{key}={result[key]!r} is not numeric"
+        ) from exc
+    if values.shape != (size,) or not np.isfinite(values).all():
+        raise ValueError(
+            f"{scenario_id} step {step_index}: required thermal output "
+            f"{key} has invalid shape or non-finite values"
+        )
+    return values
+
+
+def _clear_pack_step_history(pack):
+    histories = getattr(pack, "history", None)
+    if histories is not None:
+        for history in histories:
+            history.clear()
+    branch_histories = getattr(pack, "branch_currents_history", None)
+    if branch_histories is not None:
+        for history in branch_histories:
+            history.clear()
+
+
+def run_dynamic_scenario(spec, split="train"):
+    compressor, pump, current = _validate_dynamic_scenario(spec)
+    if split not in VALID_SPLITS:
+        raise ValueError(f"{spec.scenario_id}: invalid split={split!r}")
+
+    pack_config = build_pack_config(
+        total_current=float(current[0]),
+        initial_soc=float(spec.initial_soc),
+        initial_temp_c=float(spec.initial_battery_c),
+    )
+    pack = BatteryPack(pack_config)
+    t_ambient_k = float(spec.ambient_c) + 273.15
+    t_tank_k = float(spec.initial_coolant_c) + 273.15
+    t_plate_k = np.full(pack.cols, float(spec.initial_plate_c) + 273.15)
+    dynamic_state = initialize_refrigeration_dynamic_state(
+        float(compressor[0]), float(pump[0])
+    )
+    rows = []
+
+    for index in range(spec.steps):
+        n_comp_cmd = float(compressor[index])
+        n_pump_cmd = float(pump[index])
+        pack.current = float(current[index])
+        thermal_step = simulate_thermal_loop_step(
+            pack=pack,
+            T_tank_K=t_tank_k,
+            T_plate_K_array=t_plate_k,
+            N_comp_cmd=n_comp_cmd,
+            N_pump_cmd=n_pump_cmd,
+            T_outdoor=t_ambient_k,
+            dt=float(spec.dt_s),
+            is_reversed=(spec.flow_direction < 0),
+            dynamic_state=dynamic_state,
+        )
+
+        t_tank_k = _required_finite_step_value(
+            thermal_step, "T_tank_K", spec.scenario_id, index
+        )
+        t_plate_k = _required_finite_array(
+            thermal_step,
+            "T_plate_K_array",
+            spec.scenario_id,
+            index,
+            pack.cols,
+        )
+        n_comp_eff = _required_finite_step_value(
+            thermal_step, "N_comp_eff", spec.scenario_id, index
+        )
+        n_pump_eff = _required_finite_step_value(
+            thermal_step, "N_pump_eff", spec.scenario_id, index
+        )
+        n_fan_cmd = _required_finite_step_value(
+            thermal_step, "N_fan_cmd", spec.scenario_id, index
+        )
+        n_fan_eff = _required_finite_step_value(
+            thermal_step, "N_fan_eff", spec.scenario_id, index
+        )
+        q_evap_eff = _required_finite_step_value(
+            thermal_step, "Q_dot_evap", spec.scenario_id, index
+        )
+        q_cond_eff = _required_finite_step_value(
+            thermal_step, "Q_dot_cond", spec.scenario_id, index
+        )
+        t_supply_k = _required_finite_step_value(
+            thermal_step, "T_pipe_supply_K", spec.scenario_id, index
+        )
+        t_return_k = _required_finite_step_value(
+            thermal_step, "T_pipe_return_K", spec.scenario_id, index
+        )
+        dynamic_state = thermal_step.get("dynamic_state")
+        if dynamic_state is None:
+            raise ValueError(
+                f"{spec.scenario_id} step {index}: required thermal output "
+                "dynamic_state=missing"
+            )
+
+        pack.step(
+            float(spec.dt_s), T_plate=t_plate_k, T_cabinet=t_ambient_k
+        )
+        t_batt_k = float(pack.get_avg_temp())
+        if not math.isfinite(t_batt_k):
+            raise ValueError(
+                f"{spec.scenario_id} step {index}: battery temperature is not finite"
+            )
+        q_gen_w = ((float(pack.current) / 4.0) ** 2) * 0.001 * 52.0
+        _clear_pack_step_history(pack)
+
+        diagnostic_pump = pump_model(n_pump_eff)
+        if not isinstance(diagnostic_pump, (tuple, list)) or len(diagnostic_pump) != 2:
+            raise ValueError(
+                f"{spec.scenario_id} step {index}: pump_model returned invalid output"
+            )
+        m_dot_cool = _required_finite_step_value(
+            {"m_dot_cool": diagnostic_pump[0]},
+            "m_dot_cool",
+            spec.scenario_id,
+            index,
+        )
+        w_pump_ss = _required_finite_step_value(
+            {"w_pump": diagnostic_pump[1]},
+            "w_pump",
+            spec.scenario_id,
+            index,
+        )
+        n_fan_ss = float(staged_fan_speed(n_comp_eff))
+        if not math.isfinite(n_fan_ss):
+            raise ValueError(
+                f"{spec.scenario_id} step {index}: staged fan speed is not finite"
+            )
+        cycle = run_refrigeration_cycle(
+            n_comp_eff,
+            n_fan_ss,
+            t_tank_k,
+            m_dot_cool,
+            t_ambient_k,
+        )
+        diagnostic_context = f"{spec.scenario_id} step {index}"
+        q_evap_ss = _required_finite_cycle_value(
+            cycle, "Q_evap", diagnostic_context
+        )
+        q_cond_ss = _required_finite_cycle_value(
+            cycle, "Q_cond", diagnostic_context
+        )
+        w_comp_ss = _required_finite_cycle_value(
+            cycle, "W_comp", diagnostic_context
+        )
+        w_fan_ss = _required_finite_cycle_value(
+            cycle, "W_fan", diagnostic_context
+        )
+        t_cool_out_k = _required_finite_cycle_value(
+            cycle, "T_cool_out", diagnostic_context
+        )
+        t_evap_sat_k = _required_finite_cycle_value(
+            cycle, "T_evap_sat", diagnostic_context
+        )
+        t_cond_sat_k = _required_finite_cycle_value(
+            cycle, "T_cond_sat", diagnostic_context
+        )
+        if n_comp_eff < N_COMP_MIN_RPM:
+            q_hx_potential = _off_capacity_limit(
+                cycle, "Q_hx_potential", diagnostic_context
+            )
+            q_ref_max = _off_capacity_limit(
+                cycle, "Q_ref_max", diagnostic_context
+            )
+            limit_type = "compressor_off"
+        else:
+            q_hx_potential = _required_finite_cycle_value(
+                cycle, "Q_hx_potential", diagnostic_context
+            )
+            q_ref_max = _required_finite_cycle_value(
+                cycle, "Q_ref_max", diagnostic_context
+            )
+            limit_type = (
+                "heat_exchanger_limit"
+                if q_hx_potential <= q_ref_max
+                else "refrigerant_limit"
+            )
+
+        row = {
+            "scenario_id": spec.scenario_id,
+            "split": split,
+            "time_s": (index + 1) * float(spec.dt_s),
+            "flow_direction": spec.flow_direction,
+            "n_comp_cmd_rpm": n_comp_cmd,
+            "n_pump_cmd_rpm": n_pump_cmd,
+            "n_comp_eff_rpm": n_comp_eff,
+            "n_pump_eff_rpm": n_pump_eff,
+            "q_gen_w": q_gen_w,
+            "t_ambient_c": float(spec.ambient_c),
+            "t_batt_c": t_batt_k - 273.15,
+            "t_cool_c": t_tank_k - 273.15,
+            "t_plate_c": float(np.mean(t_plate_k)) - 273.15,
+            "t_supply_c": t_supply_k - 273.15,
+            "t_return_c": t_return_k - 273.15,
+            "q_evap_ss_w": q_evap_ss,
+            "q_evap_eff_w": q_evap_eff,
+            "q_cond_ss_w": q_cond_ss,
+            "q_cond_eff_w": q_cond_eff,
+            "dataset_kind": "dynamic",
+            "source_model": "thermal_loop.simulate_thermal_loop_step",
+            "dt_s": float(spec.dt_s),
+            "scenario_seed": int(spec.seed),
+            "excitation_kind": spec.excitation_kind,
+            "current_a": float(pack.current),
+            "initial_soc": float(spec.initial_soc),
+            "n_fan_cmd_rpm": n_fan_cmd,
+            "n_fan_eff_rpm": n_fan_eff,
+            "n_fan_ss_rpm": n_fan_ss,
+            "m_dot_cool_kg_s": m_dot_cool,
+            "w_pump_w": _required_finite_step_value(
+                thermal_step, "W_pump_val", spec.scenario_id, index
+            ),
+            "w_pump_ss_w": w_pump_ss,
+            "w_comp_w": _required_finite_step_value(
+                thermal_step, "W_comp_real", spec.scenario_id, index
+            ),
+            "w_comp_ss_w": w_comp_ss,
+            "w_fan_w": _required_finite_step_value(
+                thermal_step, "W_fan_real", spec.scenario_id, index
+            ),
+            "w_fan_ss_w": w_fan_ss,
+            "q_hx_potential_w": q_hx_potential,
+            "q_ref_max_w": q_ref_max,
+            "t_cool_out_c": t_cool_out_k - 273.15,
+            "t_evap_sat_c": t_evap_sat_k - 273.15,
+            "t_cond_sat_c": t_cond_sat_k - 273.15,
+            "limit_type": limit_type,
+            "plant_model_version": _PLANT_MODEL_VERSION,
+            "plant_source_hash": _PLANT_SOURCE_HASH,
+            "configuration_hash": _CONFIGURATION_HASH,
+            **_CONFIGURATION,
+        }
+        rows.append(row)
+
+    return rows
+
+
+def generate_dynamic_rows(specs, seed=20260714):
+    specs = list(specs)
+    if not specs:
+        raise ValueError("dynamic identification scenarios must not be empty")
+    scenario_ids = [spec.scenario_id for spec in specs]
+    if len(set(scenario_ids)) != len(scenario_ids):
+        raise ValueError("Duplicate dynamic scenario_id values are not allowed")
+    for spec in specs:
+        _validate_dynamic_scenario(spec)
+    scenario_splits = assign_scenario_splits(scenario_ids, seed=seed)
+    if set(scenario_splits) != set(scenario_ids) or any(
+        split not in VALID_SPLITS for split in scenario_splits.values()
+    ):
+        raise ValueError("assign_scenario_splits returned an invalid assignment")
+
+    rows = []
+    for spec in specs:
+        rows.extend(run_dynamic_scenario(spec, scenario_splits[spec.scenario_id]))
+    frame = pd.DataFrame(rows)
+    validate_identification_frame(frame)
+    numeric = frame.select_dtypes(include=[np.number])
+    if not np.isfinite(numeric.to_numpy(dtype=float)).all():
+        raise ValueError("Dynamic identification rows contain NaN or Inf values")
+    return rows
+
+
 def _parse_args():
     parser = argparse.ArgumentParser(
-        description="Generate steady-state MPC predictor identification data."
+        description="Generate steady and dynamic MPC predictor identification data."
     )
-    parser.add_argument("--dataset", choices=("steady",), default="steady")
+    parser.add_argument(
+        "--dataset", choices=("steady", "dynamic", "all"), default="steady"
+    )
     parser.add_argument("--mode", choices=("smoke", "full"), default="full")
     parser.add_argument("--seed", type=int, default=20260714)
     parser.add_argument(
@@ -285,13 +852,23 @@ def _parse_args():
 
 def main():
     args = _parse_args()
-    rows = generate_steady_rows(build_steady_grid(args.mode), seed=args.seed)
-    frame = pd.DataFrame(rows)
-    validate_identification_frame(frame)
     args.output_root.mkdir(parents=True, exist_ok=True)
-    output_path = args.output_root / f"steady_{args.mode}.csv"
-    frame.to_csv(output_path, index=False, encoding="utf-8")
-    print(f"Wrote {len(frame)} rows to {output_path}")
+    datasets = ("steady", "dynamic") if args.dataset == "all" else (args.dataset,)
+    for dataset_kind in datasets:
+        if dataset_kind == "steady":
+            rows = generate_steady_rows(
+                build_steady_grid(args.mode), seed=args.seed
+            )
+        else:
+            rows = generate_dynamic_rows(
+                build_dynamic_scenarios(args.mode, seed=args.seed),
+                seed=args.seed,
+            )
+        frame = pd.DataFrame(rows)
+        validate_identification_frame(frame)
+        output_path = args.output_root / f"{dataset_kind}_{args.mode}.csv"
+        frame.to_csv(output_path, index=False, encoding="utf-8")
+        print(f"Wrote {len(frame)} rows to {output_path}")
 
 
 if __name__ == "__main__":

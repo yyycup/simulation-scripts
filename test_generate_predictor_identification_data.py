@@ -1,12 +1,20 @@
 from io import StringIO
+from pathlib import Path
 import unittest
-from unittest.mock import patch
+from unittest.mock import call, patch
+
+import numpy as np
 
 from predictor_identification_data import REQUIRED_COLUMNS
 from generate_predictor_identification_data import (
+    DynamicScenarioSpec,
     _parse_args,
+    build_dynamic_scenarios,
     build_steady_grid,
+    generate_dynamic_rows,
     generate_steady_rows,
+    ramp_limited_multilevel_sequence,
+    run_dynamic_scenario,
 )
 
 
@@ -61,13 +69,22 @@ class GeneratePredictorIdentificationDataTest(unittest.TestCase):
                 ]
             )
 
-    def test_cli_rejects_all_dataset_until_dynamic_generation_exists(self):
+    def test_cli_accepts_all_dataset(self):
         with patch(
             "sys.argv",
             ["generate_predictor_identification_data.py", "--dataset", "all"],
         ), patch("sys.stderr", new_callable=StringIO):
-            with self.assertRaises(SystemExit):
-                _parse_args()
+            self.assertEqual(_parse_args().dataset, "all")
+
+    def test_windows_runtime_path_is_prepared_before_pack_import(self):
+        source = Path("generate_predictor_identification_data.py").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertLess(
+            source.index("ensure_env_library_bin_on_path()"),
+            source.index("from pack import BatteryPack"),
+        )
 
     def test_configuration_hash_tracks_configuration_and_plant_source(self):
         from generate_predictor_identification_data import build_configuration_hash
@@ -200,6 +217,302 @@ class GeneratePredictorIdentificationDataTest(unittest.TestCase):
         self.assertEqual(rows[0]["configuration_hash"], rows[1]["configuration_hash"])
         self.assertRegex(rows[0]["plant_source_hash"], r"^[0-9a-f]{64}$")
         self.assertTrue(rows[0]["plant_model_version"])
+
+
+class DynamicExcitationTest(unittest.TestCase):
+    def test_ramp_limited_multilevel_sequence_is_deterministic_and_limited(self):
+        first = ramp_limited_multilevel_sequence(
+            (1000.0, 2000.0, 4000.0, 6000.0), 80, 600.0, seed=17
+        )
+        second = ramp_limited_multilevel_sequence(
+            (1000.0, 2000.0, 4000.0, 6000.0), 80, 600.0, seed=17
+        )
+
+        self.assertEqual(first.tolist(), second.tolist())
+        self.assertEqual(len(first), 80)
+        self.assertGreaterEqual(float(first.min()), 1000.0)
+        self.assertLessEqual(float(first.max()), 6000.0)
+        self.assertLessEqual(float(abs(first[1:] - first[:-1]).max()), 600.0)
+
+    def test_ramp_limited_multilevel_sequence_rejects_invalid_inputs(self):
+        invalid_calls = (
+            ((), 5, 1.0),
+            ((1.0,), 0, 1.0),
+            ((1.0,), -1, 1.0),
+            ((1.0,), 5, -1.0),
+        )
+        for levels, steps, dmax in invalid_calls:
+            with self.subTest(levels=levels, steps=steps, dmax=dmax):
+                with self.assertRaises(ValueError):
+                    ramp_limited_multilevel_sequence(
+                        levels, steps, dmax, seed=17
+                    )
+
+    def test_smoke_scenarios_are_stable_repeatable_and_cover_required_kinds(self):
+        first = build_dynamic_scenarios("smoke", seed=17)
+        second = build_dynamic_scenarios("smoke", seed=17)
+
+        self.assertEqual(first, second)
+        self.assertEqual(
+            [spec.scenario_id for spec in first],
+            [
+                "dynamic_smoke_compressor_only_forward",
+                "dynamic_smoke_pump_only_forward",
+                "dynamic_smoke_combined_forward",
+                "dynamic_smoke_combined_reverse",
+            ],
+        )
+        self.assertTrue(all(spec.steps == 20 for spec in first))
+        self.assertEqual(
+            [spec.excitation_kind for spec in first],
+            ["compressor-only", "pump-only", "combined", "combined"],
+        )
+        self.assertEqual([spec.flow_direction for spec in first], [1, 1, 1, -1])
+        self._assert_profiles_are_valid(first)
+
+    def test_full_scenarios_cover_conditions_and_exact_split_cardinality(self):
+        specs = build_dynamic_scenarios("full", seed=23)
+
+        self.assertGreaterEqual(len(specs), 10)
+        self.assertEqual(len({spec.scenario_id for spec in specs}), len(specs))
+        self.assertTrue(all(spec.steps in (120, 150, 180) for spec in specs))
+        self.assertEqual(
+            {spec.excitation_kind for spec in specs},
+            {"compressor-only", "pump-only", "combined"},
+        )
+        self.assertEqual({spec.flow_direction for spec in specs}, {-1, 1})
+        self.assertGreaterEqual(len({spec.initial_battery_c for spec in specs}), 3)
+        self.assertGreaterEqual(len({spec.initial_coolant_c for spec in specs}), 3)
+        self.assertGreaterEqual(len({spec.initial_plate_c for spec in specs}), 3)
+        self.assertGreaterEqual(len({spec.ambient_c for spec in specs}), 3)
+        self.assertTrue(any(np.ptp(spec.current_a) > 0.0 for spec in specs))
+        self._assert_profiles_are_valid(specs)
+
+    def _assert_profiles_are_valid(self, specs):
+        for spec in specs:
+            with self.subTest(scenario_id=spec.scenario_id):
+                self.assertEqual(len(spec.compressor_command_rpm), spec.steps)
+                self.assertEqual(len(spec.pump_command_rpm), spec.steps)
+                self.assertEqual(len(spec.current_a), spec.steps)
+                self.assertGreaterEqual(min(spec.compressor_command_rpm), 1000.0)
+                self.assertLessEqual(max(spec.compressor_command_rpm), 6000.0)
+                self.assertGreaterEqual(min(spec.pump_command_rpm), 1600.0)
+                self.assertLessEqual(max(spec.pump_command_rpm), 4800.0)
+                self.assertLessEqual(
+                    float(np.max(np.abs(np.diff(spec.compressor_command_rpm)))),
+                    600.0,
+                )
+                self.assertLessEqual(
+                    float(np.max(np.abs(np.diff(spec.pump_command_rpm)))),
+                    300.0,
+                )
+                if spec.excitation_kind == "compressor-only":
+                    self.assertEqual(len(set(spec.pump_command_rpm)), 1)
+                if spec.excitation_kind == "pump-only":
+                    self.assertEqual(len(set(spec.compressor_command_rpm)), 1)
+
+
+class DynamicRolloutTest(unittest.TestCase):
+    class FakePack:
+        instances = []
+
+        def __init__(self, config):
+            self.config = config
+            self.cols = 3
+            self.rows = 4
+            self.current = config["total_current"]
+            self.history = [[object()] for _ in range(12)]
+            self.step_calls = []
+            self.__class__.instances.append(self)
+
+        def step(self, dt, T_plate, T_cabinet):
+            self.step_calls.append((dt, np.asarray(T_plate).copy(), T_cabinet))
+
+        def get_avg_temp(self):
+            return 303.15
+
+    @staticmethod
+    def _spec(scenario_id="dynamic_mock"):
+        return DynamicScenarioSpec(
+            scenario_id=scenario_id,
+            steps=1,
+            dt_s=5.0,
+            seed=41,
+            excitation_kind="combined",
+            flow_direction=-1,
+            initial_soc=0.8,
+            initial_battery_c=31.0,
+            initial_coolant_c=26.0,
+            initial_plate_c=27.0,
+            ambient_c=35.0,
+            compressor_command_rpm=(3200.0,),
+            pump_command_rpm=(2400.0,),
+            current_a=(400.0,),
+        )
+
+    @staticmethod
+    def _thermal_result():
+        return {
+            "T_tank_K": 300.15,
+            "T_plate_K_array": np.array([299.15, 300.15, 301.15]),
+            "W_comp_real": 111.0,
+            "W_pump_val": 22.0,
+            "W_fan_real": 8.0,
+            "N_comp_eff": 3100.0,
+            "N_pump_eff": 2300.0,
+            "N_fan_cmd": 800.0,
+            "N_fan_eff": 750.0,
+            "dynamic_state": {"token": "next"},
+            "m_dot_cool": 0.21,
+            "T_pipe_supply_K": 296.15,
+            "T_pipe_return_K": 302.15,
+            "Q_dot_evap": 700.0,
+            "Q_dot_cond": 950.0,
+        }
+
+    @staticmethod
+    def _cycle_result():
+        return {
+            "Q_evap": 900.0,
+            "Q_cond": 1200.0,
+            "Q_hx_potential": 950.0,
+            "Q_ref_max": 1000.0,
+            "W_comp": 105.0,
+            "W_fan": 7.0,
+            "T_cool_out": 297.15,
+            "T_evap_sat": 280.15,
+            "T_cond_sat": 320.15,
+        }
+
+    def setUp(self):
+        self.FakePack.instances.clear()
+
+    @patch("generate_predictor_identification_data.run_refrigeration_cycle")
+    @patch("generate_predictor_identification_data.pump_model")
+    @patch("generate_predictor_identification_data.staged_fan_speed")
+    @patch("generate_predictor_identification_data.simulate_thermal_loop_step")
+    @patch("generate_predictor_identification_data.initialize_refrigeration_dynamic_state")
+    @patch("generate_predictor_identification_data.BatteryPack")
+    def test_one_step_uses_dynamic_plant_and_separate_steady_diagnostic(
+        self,
+        battery_pack,
+        initialize_state,
+        simulate_step,
+        staged_fan,
+        pump_model,
+        run_cycle,
+    ):
+        battery_pack.side_effect = self.FakePack
+        initialize_state.return_value = {"token": "initial"}
+        simulate_step.return_value = self._thermal_result()
+        staged_fan.return_value = 777.0
+        pump_model.return_value = (0.23, 23.0)
+        run_cycle.return_value = self._cycle_result()
+
+        row = run_dynamic_scenario(self._spec(), split="train")[0]
+
+        self.assertTrue(set(REQUIRED_COLUMNS).issubset(row))
+        self.assertEqual(row["q_gen_w"], ((400.0 / 4.0) ** 2) * 0.001 * 52.0)
+        self.assertEqual(row["flow_direction"], -1)
+        self.assertEqual(row["n_comp_eff_rpm"], 3100.0)
+        self.assertEqual(row["n_pump_eff_rpm"], 2300.0)
+        self.assertEqual(row["q_evap_eff_w"], 700.0)
+        self.assertEqual(row["q_cond_eff_w"], 950.0)
+        self.assertEqual(row["q_evap_ss_w"], 900.0)
+        self.assertEqual(row["q_cond_ss_w"], 1200.0)
+        self.assertEqual(row["t_cool_c"], 27.0)
+        self.assertEqual(row["t_batt_c"], 30.0)
+        self.assertEqual(row["dataset_kind"], "dynamic")
+        self.assertEqual(
+            row["source_model"], "thermal_loop.simulate_thermal_loop_step"
+        )
+        initialize_state.assert_called_once_with(3200.0, 2400.0)
+        simulate_step.assert_called_once()
+        self.assertEqual(simulate_step.call_args.kwargs["dynamic_state"], {"token": "initial"})
+        self.assertTrue(simulate_step.call_args.kwargs["is_reversed"])
+        self.assertEqual(simulate_step.call_args.kwargs["T_outdoor"], 308.15)
+        staged_fan.assert_called_once_with(3100.0)
+        pump_model.assert_called_once_with(2300.0)
+        run_cycle.assert_called_once_with(3100.0, 777.0, 300.15, 0.23, 308.15)
+        fake_pack = self.FakePack.instances[0]
+        self.assertEqual(fake_pack.current, 400.0)
+        self.assertEqual(fake_pack.step_calls[0][0], 5.0)
+        np.testing.assert_array_equal(
+            fake_pack.step_calls[0][1], np.array([299.15, 300.15, 301.15])
+        )
+        self.assertEqual(fake_pack.step_calls[0][2], 308.15)
+        self.assertTrue(all(not history for history in fake_pack.history))
+
+    @patch("generate_predictor_identification_data.run_refrigeration_cycle")
+    @patch("generate_predictor_identification_data.pump_model", return_value=(0.23, 23.0))
+    @patch("generate_predictor_identification_data.staged_fan_speed", return_value=777.0)
+    @patch("generate_predictor_identification_data.simulate_thermal_loop_step")
+    @patch("generate_predictor_identification_data.initialize_refrigeration_dynamic_state", return_value={})
+    @patch("generate_predictor_identification_data.BatteryPack")
+    def test_dynamic_diagnostic_rejects_missing_or_nonfinite_critical_values(
+        self,
+        battery_pack,
+        _initialize_state,
+        simulate_step,
+        _staged_fan,
+        _pump_model,
+        run_cycle,
+    ):
+        battery_pack.side_effect = self.FakePack
+        simulate_step.return_value = self._thermal_result()
+        for key, value in (("Q_evap", None), ("Q_cond", float("nan"))):
+            with self.subTest(key=key, value=value):
+                result = self._cycle_result()
+                if value is None:
+                    result.pop(key)
+                else:
+                    result[key] = value
+                run_cycle.return_value = result
+                with self.assertRaises(ValueError) as raised:
+                    run_dynamic_scenario(self._spec(), split="train")
+                message = str(raised.exception)
+                self.assertIn("dynamic_mock", message)
+                self.assertIn("step 0", message)
+                self.assertIn(key, message)
+
+    @patch("generate_predictor_identification_data.run_dynamic_scenario")
+    @patch("generate_predictor_identification_data.assign_scenario_splits")
+    def test_generate_dynamic_rows_assigns_splits_once_before_rollout(
+        self, assign_splits, run_scenario
+    ):
+        specs = build_dynamic_scenarios("smoke", seed=17)
+        assignment = {
+            spec.scenario_id: ("train", "validation", "test", "train")[index]
+            for index, spec in enumerate(specs)
+        }
+        assign_splits.return_value = assignment
+        run_scenario.side_effect = lambda spec, split: [
+            {
+                **{column: 1.0 for column in REQUIRED_COLUMNS},
+                "scenario_id": spec.scenario_id,
+                "split": split,
+                "flow_direction": spec.flow_direction,
+            }
+        ]
+
+        rows = generate_dynamic_rows(specs, seed=99)
+
+        assign_splits.assert_called_once_with(
+            [spec.scenario_id for spec in specs], seed=99
+        )
+        self.assertEqual(
+            run_scenario.call_args_list,
+            [call(spec, assignment[spec.scenario_id]) for spec in specs],
+        )
+        self.assertEqual(len(rows), 4)
+
+    def test_generate_dynamic_rows_rejects_empty_and_duplicate_scenarios(self):
+        with self.assertRaisesRegex(ValueError, "empty"):
+            generate_dynamic_rows([])
+
+        spec = build_dynamic_scenarios("smoke", seed=17)[0]
+        with self.assertRaisesRegex(ValueError, "[Dd]uplicate"):
+            generate_dynamic_rows([spec, spec])
 
 
 if __name__ == "__main__":
