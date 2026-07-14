@@ -5,6 +5,9 @@ import math
 from pathlib import Path
 
 import pandas as pd
+import thermal_batch_config as thermal_batch_config_module
+import thermal_loop as thermal_loop_module
+import thermal_system as thermal_system_module
 
 from predictor_identification_data import (
     REQUIRED_COLUMNS,
@@ -51,12 +54,48 @@ _CONFIGURATION = {
     "evap_flow_exp": float(EVAP_FLOW_EXP),
     "evap_cap_factor": float(EVAP_CAP_FACTOR),
 }
-_CONFIGURATION_JSON = json.dumps(
-    _CONFIGURATION, sort_keys=True, separators=(",", ":")
+
+
+def _build_plant_source_hash(modules):
+    digest = hashlib.sha256()
+    for module in sorted(modules, key=lambda value: value.__name__):
+        source_path = getattr(module, "__file__", None)
+        if not source_path:
+            raise RuntimeError(f"Cannot locate source file for {module.__name__}")
+        try:
+            source_bytes = Path(source_path).read_bytes()
+        except OSError as exc:
+            raise RuntimeError(
+                f"Cannot read source file for {module.__name__}: {exc}"
+            ) from exc
+        digest.update(module.__name__.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(source_bytes)
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def build_configuration_hash(configuration, plant_source_hash):
+    snapshot = {
+        "configuration": configuration,
+        "plant_source_hash": str(plant_source_hash),
+    }
+    snapshot_json = json.dumps(
+        snapshot,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+    return hashlib.sha256(snapshot_json.encode("utf-8")).hexdigest()
+
+
+_PLANT_SOURCE_HASH = _build_plant_source_hash(
+    (thermal_system_module, thermal_loop_module, thermal_batch_config_module)
 )
-_CONFIGURATION_HASH = hashlib.sha256(
-    _CONFIGURATION_JSON.encode("utf-8")
-).hexdigest()
+_PLANT_MODEL_VERSION = f"sha256:{_PLANT_SOURCE_HASH[:12]}"
+_CONFIGURATION_HASH = build_configuration_hash(
+    _CONFIGURATION, _PLANT_SOURCE_HASH
+)
 
 
 def build_steady_grid(mode="full"):
@@ -98,9 +137,40 @@ def _finite_float(value, default=0.0):
     return number if math.isfinite(number) else float(default)
 
 
+def _required_finite_cycle_value(cycle, key, scenario_id):
+    if key not in cycle:
+        raise ValueError(
+            f"{scenario_id}: required cycle output {key}=missing"
+        )
+    value = cycle[key]
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"{scenario_id}: required cycle output {key}={value!r} is not numeric"
+        ) from exc
+    if not math.isfinite(number):
+        raise ValueError(
+            f"{scenario_id}: required cycle output {key}={value!r} is not finite"
+        )
+    return number
+
+
+def _off_capacity_limit(cycle, key, scenario_id):
+    if key not in cycle:
+        return 0.0
+    return _required_finite_cycle_value(cycle, key, scenario_id)
+
+
 def generate_steady_rows(points, seed=20260714):
     points = [tuple(float(value) for value in point) for point in points]
+    if not points:
+        raise ValueError("steady identification points must not be empty")
+    if len(set(points)) != len(points):
+        raise ValueError("Duplicate steady identification points are not allowed")
     scenario_ids = [_scenario_id(*point) for point in points]
+    if len(set(scenario_ids)) != len(scenario_ids):
+        raise ValueError("scenario_id collision after stable input formatting")
     scenario_splits = assign_scenario_splits(scenario_ids, seed=seed)
     rows = []
 
@@ -121,16 +191,33 @@ def generate_steady_rows(points, seed=20260714):
             t_ambient_k,
         )
 
-        q_evap = _finite_float(cycle.get("Q_evap"))
-        q_cond = _finite_float(cycle.get("Q_cond"))
-        q_hx_potential = _finite_float(cycle.get("Q_hx_potential"))
-        q_ref_max = _finite_float(cycle.get("Q_ref_max"))
+        q_evap = _required_finite_cycle_value(cycle, "Q_evap", scenario_id)
+        q_cond = _required_finite_cycle_value(cycle, "Q_cond", scenario_id)
+        w_comp = _required_finite_cycle_value(cycle, "W_comp", scenario_id)
+        t_evap_sat = _required_finite_cycle_value(
+            cycle, "T_evap_sat", scenario_id
+        )
+        t_cond_sat = _required_finite_cycle_value(
+            cycle, "T_cond_sat", scenario_id
+        )
         if n_comp < N_COMP_MIN_RPM:
+            q_hx_potential = _off_capacity_limit(
+                cycle, "Q_hx_potential", scenario_id
+            )
+            q_ref_max = _off_capacity_limit(cycle, "Q_ref_max", scenario_id)
             limit_type = "compressor_off"
-        elif q_hx_potential <= q_ref_max:
-            limit_type = "heat_exchanger_limit"
         else:
-            limit_type = "refrigerant_limit"
+            q_hx_potential = _required_finite_cycle_value(
+                cycle, "Q_hx_potential", scenario_id
+            )
+            q_ref_max = _required_finite_cycle_value(
+                cycle, "Q_ref_max", scenario_id
+            )
+            limit_type = (
+                "heat_exchanger_limit"
+                if q_hx_potential <= q_ref_max
+                else "refrigerant_limit"
+            )
 
         row = {
             "scenario_id": scenario_id,
@@ -158,7 +245,7 @@ def generate_steady_rows(points, seed=20260714):
             "n_fan_eff_rpm": n_fan,
             "m_dot_cool_kg_s": m_dot_cool,
             "w_pump_w": w_pump,
-            "w_comp_w": _finite_float(cycle.get("W_comp")),
+            "w_comp_w": w_comp,
             "w_fan_w": _finite_float(cycle.get("W_fan")),
             "q_hx_potential_w": q_hx_potential,
             "q_ref_max_w": q_ref_max,
@@ -166,15 +253,11 @@ def generate_steady_rows(points, seed=20260714):
                 cycle.get("T_cool_out"), t_cool_k
             )
             - 273.15,
-            "t_evap_sat_c": _finite_float(
-                cycle.get("T_evap_sat"), t_cool_k
-            )
-            - 273.15,
-            "t_cond_sat_c": _finite_float(
-                cycle.get("T_cond_sat"), t_ambient_k
-            )
-            - 273.15,
+            "t_evap_sat_c": t_evap_sat - 273.15,
+            "t_cond_sat_c": t_cond_sat - 273.15,
             "limit_type": limit_type,
+            "plant_model_version": _PLANT_MODEL_VERSION,
+            "plant_source_hash": _PLANT_SOURCE_HASH,
             "configuration_hash": _CONFIGURATION_HASH,
             **_CONFIGURATION,
         }
@@ -189,7 +272,7 @@ def _parse_args():
     parser = argparse.ArgumentParser(
         description="Generate steady-state MPC predictor identification data."
     )
-    parser.add_argument("--dataset", choices=("steady", "all"), default="steady")
+    parser.add_argument("--dataset", choices=("steady",), default="steady")
     parser.add_argument("--mode", choices=("smoke", "full"), default="full")
     parser.add_argument("--seed", type=int, default=20260714)
     parser.add_argument(
