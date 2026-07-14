@@ -90,3 +90,8 @@ slprj/
 legacy/
 simulink-agentic-toolkit/
 simulink-agentic-toolkit-main/
+
+# Small runtime model parameters are intentionally versioned.
+!model_data/
+!model_data/*.json
+!model_data/*.csv

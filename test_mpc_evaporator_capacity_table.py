@@ -38,29 +38,23 @@ class EvaporatorCapacityTableTests(unittest.TestCase):
         actual = trilinear_capacity_value(self.table, 2500.0, 2000.0, 22.5, "q_hx_w")
         self.assertEqual(len(values), 8)
         self.assertAlmostEqual(actual, expected)
-    def test_controller_replaces_linear_evaporator_command_with_bounded_capacity_map(self):
-        source = inspect.getsource(MPCControllerDual.__init__)
-        self.assertIn("load_evaporator_capacity_table", source)
-        self.assertIn("gekko_trilinear_capacity_expr", source)
-        self.assertIn("self.Q_hx_capacity_w", source)
-        self.assertIn("self.Q_ref_max_capacity_w", source)
-        self.assertIn("self.Q_evap_cmd_w", source)
-        self.assertNotIn('Q_evap_cmd = self.m.Intermediate(p["kq"] * N_comp_delay)', source)
-
-
-
-    def test_controller_uses_lightweight_candidate_b_command(self):
+    def test_controller_uses_bounded_candidate_b_command(self):
         source = inspect.getsource(MPCControllerDual.__init__)
         self.assertIn("load_capacity_calibration", source)
         self.assertIn("evaporator_capacity_calibration", source)
+        self.assertIn("q_evap_raw_w", source)
         self.assertIn("self.Q_evap_cmd_w", source)
+        self.assertIn("lb=0.0", source)
+        self.assertIn("ub=self._capacity_upper_w", source)
         self.assertNotIn("gekko_trilinear_capacity_expr", source)
+        self.assertNotIn('Q_evap_cmd = self.m.Intermediate(p["kq"] * N_comp_delay)', source)
 
-if __name__ == "__main__":
-    unittest.main()
     def test_solver_exports_time_aligned_evaporator_predictions(self):
         source = inspect.getsource(MPCControllerDual.solve_step)
         self.assertIn("qevap_cmd_pred_1_w", source)
         self.assertIn("qcond_pred_1_w", source)
         self.assertIn("qevap_pred_1_w", source)
+
+if __name__ == "__main__":
+    unittest.main()
 

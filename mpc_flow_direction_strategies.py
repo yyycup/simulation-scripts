@@ -70,16 +70,14 @@ from thermal_system import C_tank, cp_cool, m_dot_nominal
 from mpc_evaporator_capacity_model import load_capacity_calibration
 
 PUMP_POWER_SPEED_COEFF = (2.27321928e-09, -1.62756913e-05, 4.41581449e-02, -3.49442214e01)
+MODEL_DATA_ROOT = Path(__file__).resolve().parent / "model_data"
 DEFAULT_REDUCED_MODEL_CALIBRATION_PATH = (
-    Path(__file__).resolve().parent / "outputs" / "mpc_reduced_model_calibration" / "best_theta.json"
+    MODEL_DATA_ROOT / "mpc_reduced_model_best_theta.json"
 )
 
 
 DEFAULT_EVAPORATOR_CAPACITY_TABLE_PATH = (
-    Path(__file__).resolve().parent
-    / "outputs"
-    / "mpc_evaporator_capacity_candidate_b"
-    / "candidate_b_capacity_limits_grid.csv"
+    MODEL_DATA_ROOT / "candidate_b_capacity_limits_grid.csv"
 )
 
 
@@ -1717,7 +1715,6 @@ def create_mpc_flow_controller(
     if mpc_flow_mode == "mixed_integer":
         return MixedIntegerFlowMPC(current_profile, dt=dt, target_temp_c=target_temp_c)
     raise ValueError(f"Unknown MPC flow mode: {mpc_flow_mode}")
-
 
 
 

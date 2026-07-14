@@ -1,0 +1,44 @@
+{
+  "model_type": "candidate_b",
+  "coefficients": {
+    "b0": 0.6325437453783026,
+    "b1": -0.11950333055516761,
+    "b2": 0.016338589131824885
+  },
+  "n_pump_ref_rpm": 2000.0,
+  "q_evap_upper_bound_w": 4723.151827216717,
+  "evaporator_model_version": "candidate B",
+  "EVAP_UA_FACTOR": 2.0,
+  "EVAP_FLOW_EXP": 1.2,
+  "EVAP_CAP_FACTOR": 1.5,
+  "calibration_date": "2026-07-12",
+  "data_range": {
+    "N_comp_rpm": [
+      2000.0,
+      3000.0,
+      4000.0,
+      5000.0,
+      6000.0
+    ],
+    "N_pump_rpm": [
+      1600.0,
+      2400.0,
+      3200.0,
+      4000.0,
+      4800.0
+    ],
+    "T_cool_in_C": [
+      20.0,
+      25.0,
+      30.0,
+      35.0
+    ]
+  },
+  "error_metrics": {
+    "model_type": "candidate_b",
+    "MAE_W": 100.66570460491234,
+    "RMSE_W": 128.91942171607468,
+    "MAPE_percent": 4.975890343895819,
+    "max_relative_error_percent": 15.016017815718408
+  }
+}

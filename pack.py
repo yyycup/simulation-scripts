@@ -1,12 +1,12 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import os
 import json
 from pathlib import Path
 
 import platformdirs
 
 WORKSPACE = Path(__file__).resolve().parent
+HPPC_PARAMS_PATH = WORKSPACE / "model_data" / "hppc_params.json"
 platformdirs.user_config_dir = lambda *args, **kwargs: str(WORKSPACE / "outputs" / "pybamm_config")
 
 import pybamm
@@ -207,8 +207,8 @@ class BatteryPack:
 # --- 数据加载 ---
 def _get_hppc_data_formatted():
     try:
-        path = os.path.join(os.path.dirname(__file__), 'data', 'hppc_params.json')
-        with open(path, 'r') as f: data = json.load(f)
+        with HPPC_PARAMS_PATH.open("r", encoding="utf-8") as handle:
+            data = json.load(handle)
         soc = np.array(data['soc'])
         temp = np.array(data['temp'])
         n_s, n_t = len(soc), len(temp)

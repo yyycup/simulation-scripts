@@ -6,8 +6,7 @@ from pathlib import Path
 
 DEFAULT_CALIBRATION_PATH = (
     Path(__file__).resolve().parent
-    / "outputs"
-    / "mpc_evaporator_capacity_candidate_b"
+    / "model_data"
     / "mpc_evaporator_capacity_candidate_b.json"
 )
 
