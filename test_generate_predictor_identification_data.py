@@ -637,6 +637,61 @@ class GeneratePredictorIdentificationDataTest(unittest.TestCase):
                     battery_pack.assert_not_called()
 
     @patch("generate_predictor_identification_data.run_refrigeration_cycle")
+    @patch("generate_predictor_identification_data.pump_model", return_value=(0.23, 23.0))
+    @patch("generate_predictor_identification_data.staged_fan_speed", return_value=777.0)
+    @patch("generate_predictor_identification_data.simulate_thermal_loop_step")
+    @patch("generate_predictor_identification_data.initialize_refrigeration_dynamic_state")
+    @patch("generate_predictor_identification_data.BatteryPack")
+    def test_hppc_numeric_strings_and_booleans_fail_before_battery_pack(
+        self,
+        battery_pack,
+        initialize_state,
+        simulate_step,
+        _staged_fan,
+        _pump_model,
+        run_cycle,
+    ):
+        battery_pack.side_effect = DynamicRolloutTest.FakePack
+        initialize_state.return_value = {"token": "initial"}
+        simulate_step.return_value = DynamicRolloutTest._thermal_result()
+        run_cycle.return_value = DynamicRolloutTest._cycle_result()
+        invalid_values = (
+            ("soc", "0.1"),
+            ("temp", "20.0"),
+            ("ocv", "3.4"),
+            ("r0_dis", "0.01"),
+            ("soc", True),
+            ("temp", False),
+            ("ocv", True),
+            ("r0_dis", False),
+        )
+
+        with TemporaryDirectory() as tmp:
+            for index, (key, value) in enumerate(invalid_values):
+                with self.subTest(key=key, value=value):
+                    data = json.loads(json.dumps(self._valid_hppc_fixture()))
+                    if key in ("soc", "temp", "ocv"):
+                        data[key][0] = value
+                    else:
+                        data[key][0][0] = value
+                    path = Path(tmp) / f"invalid_numeric_{index}.json"
+                    path.write_text(json.dumps(data), encoding="utf-8")
+                    with patch(
+                        "generate_predictor_identification_data.pack_module.HPPC_PARAMS_PATH",
+                        path,
+                    ):
+                        with self.assertRaisesRegex(
+                            ValueError,
+                            rf"key={key}.*JSON number",
+                        ) as caught:
+                            run_dynamic_scenario(
+                                DynamicRolloutTest._spec(), split="train"
+                            )
+                    self.assertIn(str(path), str(caught.exception))
+
+        battery_pack.assert_not_called()
+
+    @patch("generate_predictor_identification_data.run_refrigeration_cycle")
     @patch("generate_predictor_identification_data.staged_fan_speed")
     @patch("generate_predictor_identification_data.pump_model")
     def test_active_point_rejects_missing_or_nonfinite_critical_cycle_outputs(

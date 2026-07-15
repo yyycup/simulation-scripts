@@ -135,6 +135,35 @@ _HPPC_REQUIRED_KEYS = (
 )
 
 
+def _validate_json_number_leaves(value, path, key, location=None):
+    location = key if location is None else location
+    if isinstance(value, list):
+        for index, item in enumerate(value):
+            _validate_json_number_leaves(
+                item,
+                path,
+                key,
+                f"{location}[{index}]",
+            )
+        return
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(
+            f"Invalid HPPC parameter file {path}: key={key} "
+            f"shape=<invalid-json-number>; {location} must be a finite "
+            f"JSON number, got {type(value).__name__}"
+        )
+    try:
+        finite = math.isfinite(value)
+    except (TypeError, OverflowError):
+        finite = False
+    if not finite:
+        raise ValueError(
+            f"Invalid HPPC parameter file {path}: key={key} "
+            f"shape=<invalid-json-number>; {location} must be a finite "
+            "JSON number"
+        )
+
+
 def validate_hppc_parameter_file(path=pack_module.HPPC_PARAMS_PATH):
     path = Path(path)
     try:
@@ -167,6 +196,7 @@ def validate_hppc_parameter_file(path=pack_module.HPPC_PARAMS_PATH):
                 f"Invalid HPPC parameter file {path}: key={key} "
                 "shape=<missing>"
             )
+        _validate_json_number_leaves(data[key], path, key)
 
     axes = {}
     for key in ("soc", "temp"):
