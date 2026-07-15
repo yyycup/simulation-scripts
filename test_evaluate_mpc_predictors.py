@@ -33,6 +33,24 @@ class ErrorMetricsTest(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "finite"):
                     error_metrics(actual=actual, predicted=predicted)
 
+    def test_rejects_misaligned_series_indexes(self):
+        actual = pd.Series([1.0, 2.0], index=["first", "second"])
+        predicted = pd.Series([1.0, 2.0], index=["second", "first"])
+
+        with self.assertRaisesRegex(ValueError, "index"):
+            error_metrics(actual=actual, predicted=predicted)
+
+    def test_rejects_series_index_metadata_mismatch(self):
+        actual = pd.Series([1.0], index=pd.Index([0], name="actual_row"))
+        predicted = pd.Series([1.0], index=pd.Index([0], name="predicted_row"))
+
+        with self.assertRaisesRegex(ValueError, "index"):
+            error_metrics(actual=actual, predicted=predicted)
+
+    def test_rejects_nonfinite_metrics_from_finite_extreme_inputs(self):
+        with self.assertRaisesRegex(ValueError, "finite metrics|overflow"):
+            error_metrics(actual=[1e308], predicted=[-1e308])
+
 
 class CapacityMetricsTest(unittest.TestCase):
     def test_separates_low_speed_and_active_capacity_metrics(self):
@@ -75,6 +93,24 @@ class CapacityMetricsTest(unittest.TestCase):
                     }
                 )
                 with self.assertRaisesRegex(ValueError, region):
+                    capacity_metrics(frame)
+
+    def test_rejects_zero_actual_capacity_in_active_region(self):
+        for predicted in (0.0, 100.0):
+            with self.subTest(predicted=predicted):
+                frame = pd.DataFrame(
+                    {
+                        "n_comp_cmd_rpm": [1000.0, 2000.0],
+                        "q_evap_ss_w": [0.0, 0.0],
+                        "q_pred_w": [20.0, predicted],
+                    },
+                    index=["low", "active-zero"],
+                )
+
+                with self.assertRaisesRegex(
+                    ValueError,
+                    "active.*nonzero.*active-zero|active-zero.*active.*nonzero",
+                ):
                     capacity_metrics(frame)
 
 

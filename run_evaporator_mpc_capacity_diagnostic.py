@@ -1,6 +1,9 @@
 """Compare steady evaporator capacity in the plant and a selected MPC predictor."""
 
 import argparse
+import json
+import math
+from numbers import Real
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -25,6 +28,42 @@ from thermal_system import pump_model, run_refrigeration_cycle
 
 
 DEFAULT_SPEEDS_RPM = (2000.0, 3000.0, 4000.0, 5000.0, 6000.0)
+
+
+def _validate_candidate_b_calibration(calibration, artifact_path):
+    artifact_path = Path(artifact_path)
+
+    def reject(message):
+        raise ValueError(f"Candidate B artifact {artifact_path}: {message}")
+
+    if not isinstance(calibration, dict):
+        reject("root must be a JSON object")
+    model_type = calibration.get("model_type")
+    if model_type != CANDIDATE_B:
+        reject(f"model_type={model_type!r}; expected {CANDIDATE_B!r}")
+
+    coefficients = calibration.get("coefficients")
+    if not isinstance(coefficients, dict):
+        reject("coefficients must be a JSON object")
+
+    def finite_number(container, field):
+        value = container.get(field)
+        if isinstance(value, bool) or not isinstance(value, Real):
+            reject(f"{field} must be a non-boolean finite number")
+        value = float(value)
+        if not math.isfinite(value):
+            reject(f"{field} must be a finite number")
+        return value
+
+    for coefficient in ("b0", "b1", "b2"):
+        finite_number(coefficients, coefficient)
+    if finite_number(calibration, "n_pump_ref_rpm") <= 0.0:
+        reject("n_pump_ref_rpm must be greater than zero")
+    if finite_number(calibration, "q_evap_upper_bound_w") < 0.0:
+        reject("q_evap_upper_bound_w must be nonnegative")
+    return calibration
+
+
 def build_comparison(
     n_comp_values,
     n_pump_rpm,
@@ -43,7 +82,13 @@ def build_comparison(
     calibration_path = (
         Path(predictor_artifact) if predictor_artifact is not None else DEFAULT_CALIBRATION_PATH
     )
-    calibration = load_capacity_calibration(path=calibration_path)
+    try:
+        calibration = load_capacity_calibration(path=calibration_path)
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise ValueError(
+            f"Candidate B artifact {calibration_path}: unable to load: {exc}"
+        ) from exc
+    calibration = _validate_candidate_b_calibration(calibration, calibration_path)
     m_dot_cool, _pump_power = pump_model(float(n_pump_rpm))
     rows = []
     for n_comp_rpm in n_comp_values:
@@ -119,7 +164,7 @@ def main():
             predictor=args.predictor,
             predictor_artifact=args.predictor_artifact,
         )
-    except ValueError as exc:
+    except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
         parser.error(str(exc))
     args.output_root.mkdir(parents=True, exist_ok=True)
     csv_path = args.output_root / "evaporator_capacity_comparison.csv"
@@ -127,7 +172,8 @@ def main():
     frame.to_csv(csv_path, index=False, encoding="utf-8-sig")
     save_plot(frame, figure_path)
     print(
-        f"predictor=Candidate B; calibration={frame.attrs['calibration_path']}; "
+        f"predictor={frame.attrs['predictor']}; "
+        f"calibration={frame.attrs['calibration_path']}; "
         f"model_type={frame.attrs['model_type']}"
     )
     print(frame.to_string(index=False))

@@ -1,9 +1,17 @@
 """Reusable error metrics for offline MPC predictor evaluation."""
 
 import numpy as np
+import pandas as pd
 
 
 def error_metrics(actual, predicted):
+    if (
+        isinstance(actual, pd.Series)
+        and isinstance(predicted, pd.Series)
+        and not actual.index.identical(predicted.index)
+    ):
+        raise ValueError("actual and predicted Series must have identical indexes")
+
     actual_values = np.asarray(actual, dtype=float).reshape(-1)
     predicted_values = np.asarray(predicted, dtype=float).reshape(-1)
     if actual_values.size != predicted_values.size:
@@ -13,14 +21,18 @@ def error_metrics(actual, predicted):
     if not (np.isfinite(actual_values).all() and np.isfinite(predicted_values).all()):
         raise ValueError("actual and predicted must contain only finite values")
 
-    error = predicted_values - actual_values
-    absolute_error = np.abs(error)
-    return {
-        "mae": float(np.mean(absolute_error)),
-        "rmse": float(np.sqrt(np.mean(error**2))),
-        "mean_bias": float(np.mean(error)),
-        "p95_abs": float(np.quantile(absolute_error, 0.95)),
-    }
+    with np.errstate(over="ignore", invalid="ignore"):
+        error = predicted_values - actual_values
+        absolute_error = np.abs(error)
+        metrics = {
+            "mae": float(np.mean(absolute_error)),
+            "rmse": float(np.sqrt(np.mean(error**2))),
+            "mean_bias": float(np.mean(error)),
+            "p95_abs": float(np.quantile(absolute_error, 0.95)),
+        }
+    if not np.isfinite(list(metrics.values())).all():
+        raise ValueError("error calculation overflowed; finite metrics are required")
+    return metrics
 
 
 def capacity_metrics(frame):
@@ -50,9 +62,14 @@ def capacity_metrics(frame):
     }
     active_actual = active["q_evap_ss_w"].astype(float)
     active_predicted = active["q_pred_w"].astype(float)
-    relative_error = (active_predicted - active_actual).abs() / active_actual.abs().clip(
-        lower=1e-9
-    )
+    zero_actual = active_actual.abs() <= 1e-9
+    if zero_actual.any():
+        problem_rows = list(active_actual.index[zero_actual])
+        raise ValueError(
+            "active capacity actual values must be nonzero for relative errors; "
+            f"found {int(zero_actual.sum())} zero row(s) at indexes {problem_rows}"
+        )
+    relative_error = (active_predicted - active_actual).abs() / active_actual.abs()
     result.update(error_metrics(active_actual, active_predicted))
     result["active_mape_percent"] = float(100.0 * relative_error.mean())
     result["active_max_relative_error_percent"] = float(100.0 * relative_error.max())
