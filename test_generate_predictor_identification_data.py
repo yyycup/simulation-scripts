@@ -1,5 +1,6 @@
 from dataclasses import replace
 from io import StringIO
+import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
@@ -8,14 +9,18 @@ from unittest.mock import call, patch
 import numpy as np
 import pandas as pd
 
-from predictor_identification_data import REQUIRED_COLUMNS
+from predictor_identification_data import REQUIRED_COLUMNS, assign_scenario_splits
 from generate_predictor_identification_data import (
     DynamicScenarioSpec,
     _parse_args,
+    assign_dynamic_scenario_splits,
+    build_dynamic_configuration_hash,
     build_dynamic_scenarios,
+    build_dynamic_source_hash,
     build_steady_grid,
     generate_dynamic_rows,
     generate_steady_rows,
+    hash_file_content,
     ramp_limited_multilevel_sequence,
     run_dynamic_scenario,
 )
@@ -167,6 +172,186 @@ class GeneratePredictorIdentificationDataTest(unittest.TestCase):
             self.assertFalse(any(column.startswith("Unnamed") for column in frame))
             self.assertTrue(set(REQUIRED_COLUMNS).issubset(frame.columns))
 
+    @patch("generate_predictor_identification_data.generate_dynamic_rows")
+    @patch("generate_predictor_identification_data.build_dynamic_scenarios")
+    def test_cli_refuses_existing_target_before_generation_without_overwrite(
+        self, build_scenarios, generate_rows
+    ):
+        with TemporaryDirectory() as tmp:
+            output_root = Path(tmp)
+            target = output_root / "dynamic_smoke.csv"
+            target.write_text("old-dynamic", encoding="utf-8")
+            with patch(
+                "sys.argv",
+                [
+                    "generate_predictor_identification_data.py",
+                    "--dataset",
+                    "dynamic",
+                    "--mode",
+                    "smoke",
+                    "--output-root",
+                    tmp,
+                ],
+            ):
+                from generate_predictor_identification_data import main
+
+                with self.assertRaisesRegex(FileExistsError, "--overwrite"):
+                    main()
+
+            self.assertEqual(target.read_text(encoding="utf-8"), "old-dynamic")
+            build_scenarios.assert_not_called()
+            generate_rows.assert_not_called()
+
+    @patch("generate_predictor_identification_data.generate_dynamic_rows")
+    @patch("generate_predictor_identification_data.build_dynamic_scenarios")
+    @patch("generate_predictor_identification_data.generate_steady_rows")
+    @patch("generate_predictor_identification_data.build_steady_grid")
+    def test_cli_all_generation_failure_keeps_both_existing_targets_unchanged(
+        self,
+        build_grid,
+        generate_steady,
+        build_scenarios,
+        generate_dynamic,
+    ):
+        build_grid.return_value = [object()]
+        build_scenarios.return_value = [object()]
+        generate_steady.return_value = self._cli_rows(2, "steady")
+        generate_dynamic.side_effect = RuntimeError("dynamic failed")
+        with TemporaryDirectory() as tmp:
+            output_root = Path(tmp)
+            steady_path = output_root / "steady_smoke.csv"
+            dynamic_path = output_root / "dynamic_smoke.csv"
+            steady_path.write_text("old-steady", encoding="utf-8")
+            dynamic_path.write_text("old-dynamic", encoding="utf-8")
+            with patch(
+                "sys.argv",
+                [
+                    "generate_predictor_identification_data.py",
+                    "--dataset",
+                    "all",
+                    "--mode",
+                    "smoke",
+                    "--output-root",
+                    tmp,
+                    "--overwrite",
+                ],
+            ):
+                from generate_predictor_identification_data import main
+
+                with self.assertRaisesRegex(RuntimeError, "dynamic failed"):
+                    main()
+
+            self.assertEqual(steady_path.read_text(encoding="utf-8"), "old-steady")
+            self.assertEqual(dynamic_path.read_text(encoding="utf-8"), "old-dynamic")
+            self.assertEqual(
+                sorted(path.name for path in output_root.iterdir()),
+                ["dynamic_smoke.csv", "steady_smoke.csv"],
+            )
+
+    @patch("generate_predictor_identification_data.generate_dynamic_rows")
+    @patch("generate_predictor_identification_data.build_dynamic_scenarios")
+    @patch("generate_predictor_identification_data.generate_steady_rows")
+    @patch("generate_predictor_identification_data.build_steady_grid")
+    def test_cli_overwrite_atomically_updates_both_datasets_with_seed(
+        self,
+        build_grid,
+        generate_steady,
+        build_scenarios,
+        generate_dynamic,
+    ):
+        build_grid.return_value = [object()]
+        build_scenarios.return_value = [object()]
+        generate_steady.return_value = self._cli_rows(2, "steady")
+        generate_dynamic.return_value = self._cli_rows(80, "dynamic")
+        with TemporaryDirectory() as tmp:
+            output_root = Path(tmp)
+            (output_root / "steady_smoke.csv").write_text("old", encoding="utf-8")
+            (output_root / "dynamic_smoke.csv").write_text("old", encoding="utf-8")
+            with patch(
+                "sys.argv",
+                [
+                    "generate_predictor_identification_data.py",
+                    "--dataset",
+                    "all",
+                    "--mode",
+                    "smoke",
+                    "--seed",
+                    "123",
+                    "--output-root",
+                    tmp,
+                    "--overwrite",
+                ],
+            ):
+                from generate_predictor_identification_data import main
+
+                main()
+            steady = pd.read_csv(output_root / "steady_smoke.csv", encoding="utf-8")
+            dynamic = pd.read_csv(output_root / "dynamic_smoke.csv", encoding="utf-8")
+            names = sorted(path.name for path in output_root.iterdir())
+
+        self.assertEqual((len(steady), len(dynamic)), (2, 80))
+        self.assertEqual(set(steady["dataset_seed"]), {123})
+        self.assertEqual(set(dynamic["dataset_seed"]), {123})
+        self.assertEqual(names, ["dynamic_smoke.csv", "steady_smoke.csv"])
+
+    @patch("generate_predictor_identification_data.generate_dynamic_rows")
+    @patch("generate_predictor_identification_data.build_dynamic_scenarios")
+    @patch("generate_predictor_identification_data.generate_steady_rows")
+    @patch("generate_predictor_identification_data.build_steady_grid")
+    def test_cli_publish_failure_restores_both_backups_without_temp_files(
+        self,
+        build_grid,
+        generate_steady,
+        build_scenarios,
+        generate_dynamic,
+    ):
+        build_grid.return_value = [object()]
+        build_scenarios.return_value = [object()]
+        generate_steady.return_value = self._cli_rows(2, "steady")
+        generate_dynamic.return_value = self._cli_rows(80, "dynamic")
+        real_replace = os.replace
+
+        def fail_second_publish(source, target):
+            source_path = Path(source)
+            target_path = Path(target)
+            if ".tmp" in source_path.name and target_path.name == "dynamic_smoke.csv":
+                raise OSError("second publish failed")
+            return real_replace(source, target)
+
+        with TemporaryDirectory() as tmp:
+            output_root = Path(tmp)
+            steady_path = output_root / "steady_smoke.csv"
+            dynamic_path = output_root / "dynamic_smoke.csv"
+            steady_path.write_text("old-steady", encoding="utf-8")
+            dynamic_path.write_text("old-dynamic", encoding="utf-8")
+            with patch(
+                "sys.argv",
+                [
+                    "generate_predictor_identification_data.py",
+                    "--dataset",
+                    "all",
+                    "--mode",
+                    "smoke",
+                    "--output-root",
+                    tmp,
+                    "--overwrite",
+                ],
+            ), patch(
+                "generate_predictor_identification_data.os.replace",
+                side_effect=fail_second_publish,
+            ):
+                from generate_predictor_identification_data import main
+
+                with self.assertRaisesRegex(OSError, "second publish failed"):
+                    main()
+
+            self.assertEqual(steady_path.read_text(encoding="utf-8"), "old-steady")
+            self.assertEqual(dynamic_path.read_text(encoding="utf-8"), "old-dynamic")
+            self.assertEqual(
+                sorted(path.name for path in output_root.iterdir()),
+                ["dynamic_smoke.csv", "steady_smoke.csv"],
+            )
+
     def test_windows_runtime_path_is_prepared_before_pack_import(self):
         source = Path("generate_predictor_identification_data.py").read_text(
             encoding="utf-8"
@@ -197,6 +382,46 @@ class GeneratePredictorIdentificationDataTest(unittest.TestCase):
             first,
             build_configuration_hash(configuration, "source-b"),
         )
+
+    def test_dynamic_hashes_track_plant_pack_and_hppc_content(self):
+        configuration = {"n_comp_min_rpm": 2000.0}
+        first_source = build_dynamic_source_hash("thermal", "pack-a", "hppc-a")
+        first_config = build_dynamic_configuration_hash(
+            configuration, "thermal", "pack-a", "hppc-a"
+        )
+
+        self.assertEqual(
+            first_source,
+            build_dynamic_source_hash("thermal", "pack-a", "hppc-a"),
+        )
+        self.assertEqual(
+            first_config,
+            build_dynamic_configuration_hash(
+                dict(configuration), "thermal", "pack-a", "hppc-a"
+            ),
+        )
+        self.assertNotEqual(
+            first_source,
+            build_dynamic_source_hash("thermal", "pack-b", "hppc-a"),
+        )
+        self.assertNotEqual(
+            first_config,
+            build_dynamic_configuration_hash(
+                configuration, "thermal", "pack-b", "hppc-a"
+            ),
+        )
+        self.assertNotEqual(
+            first_config,
+            build_dynamic_configuration_hash(
+                configuration, "thermal", "pack-a", "hppc-b"
+            ),
+        )
+
+    def test_file_content_hash_reports_read_failure_clearly(self):
+        with TemporaryDirectory() as tmp:
+            missing = Path(tmp) / "missing-hppc.json"
+            with self.assertRaisesRegex(RuntimeError, "read.*HPPC"):
+                hash_file_content(missing, "HPPC parameters")
 
     @patch("generate_predictor_identification_data.run_refrigeration_cycle")
     @patch("generate_predictor_identification_data.staged_fan_speed")
@@ -306,6 +531,8 @@ class GeneratePredictorIdentificationDataTest(unittest.TestCase):
         self.assertEqual(rows[0]["w_fan_w"], 0.0)
         self.assertEqual(rows[0]["t_cool_out_c"], 25.0)
         self.assertEqual(rows[0]["configuration_hash"], rows[1]["configuration_hash"])
+        self.assertNotIn("battery_pack_source_hash", rows[0])
+        self.assertNotIn("hppc_parameters_hash", rows[0])
         self.assertRegex(rows[0]["plant_source_hash"], r"^[0-9a-f]{64}$")
         self.assertTrue(rows[0]["plant_model_version"])
 
@@ -364,7 +591,7 @@ class DynamicExcitationTest(unittest.TestCase):
     def test_full_scenarios_cover_conditions_and_exact_split_cardinality(self):
         specs = build_dynamic_scenarios("full", seed=23)
 
-        self.assertGreaterEqual(len(specs), 10)
+        self.assertEqual(len(specs), 15)
         self.assertEqual(len({spec.scenario_id for spec in specs}), len(specs))
         self.assertTrue(all(spec.steps in (120, 150, 180) for spec in specs))
         self.assertEqual(
@@ -377,7 +604,54 @@ class DynamicExcitationTest(unittest.TestCase):
         self.assertGreaterEqual(len({spec.initial_plate_c for spec in specs}), 3)
         self.assertGreaterEqual(len({spec.ambient_c for spec in specs}), 3)
         self.assertTrue(any(np.ptp(spec.current_a) > 0.0 for spec in specs))
+        self.assertEqual(
+            {
+                kind: sum(spec.excitation_kind == kind for spec in specs)
+                for kind in ("compressor-only", "pump-only", "combined")
+            },
+            {"compressor-only": 5, "pump-only": 5, "combined": 5},
+        )
+        for kind in ("compressor-only", "pump-only", "combined"):
+            self.assertEqual(
+                {
+                    spec.flow_direction
+                    for spec in specs
+                    if spec.excitation_kind == kind
+                },
+                {-1, 1},
+            )
         self._assert_profiles_are_valid(specs)
+
+    def test_full_dynamic_splits_are_stratified_and_input_order_independent(self):
+        specs = build_dynamic_scenarios("full", seed=20260714)
+
+        first = assign_dynamic_scenario_splits(specs, seed=20260714)
+        second = assign_dynamic_scenario_splits(
+            list(reversed(specs)), seed=20260714
+        )
+
+        self.assertEqual(first, second)
+        self.assertEqual(
+            {split: list(first.values()).count(split) for split in set(first.values())},
+            {"train": 9, "validation": 3, "test": 3},
+        )
+        by_id = {spec.scenario_id: spec for spec in specs}
+        for split in ("validation", "test"):
+            selected = [by_id[key] for key, value in first.items() if value == split]
+            self.assertEqual(
+                {spec.excitation_kind for spec in selected},
+                {"compressor-only", "pump-only", "combined"},
+            )
+            self.assertEqual({spec.flow_direction for spec in selected}, {-1, 1})
+
+    def test_smoke_dynamic_splits_use_the_common_base_mapping(self):
+        specs = build_dynamic_scenarios("smoke", seed=17)
+        scenario_ids = [spec.scenario_id for spec in specs]
+
+        self.assertEqual(
+            assign_dynamic_scenario_splits(specs, seed=99),
+            assign_scenario_splits(scenario_ids, seed=99),
+        )
 
     def _assert_profiles_are_valid(self, specs):
         for spec in specs:
@@ -531,6 +805,13 @@ class DynamicRolloutTest(unittest.TestCase):
         self.assertEqual(row["t_batt_c"], 30.0)
         self.assertEqual(row["scenario_seed"], 41)
         self.assertIs(type(row["scenario_seed"]), int)
+        for key in (
+            "battery_pack_source_hash",
+            "hppc_parameters_hash",
+            "dynamic_source_hash",
+            "configuration_hash",
+        ):
+            self.assertRegex(row[key], r"^[0-9a-f]{64}$")
         self.assertEqual(row["dataset_kind"], "dynamic")
         self.assertEqual(
             row["source_model"], "thermal_loop.simulate_thermal_loop_step"
@@ -551,6 +832,101 @@ class DynamicRolloutTest(unittest.TestCase):
         )
         self.assertEqual(fake_pack.step_calls[0][2], 308.15)
         self.assertTrue(all(not history for history in fake_pack.history))
+
+    @patch("generate_predictor_identification_data.run_refrigeration_cycle")
+    @patch("generate_predictor_identification_data.pump_model", return_value=(0.23, 23.0))
+    @patch("generate_predictor_identification_data.staged_fan_speed", return_value=777.0)
+    @patch("generate_predictor_identification_data.simulate_thermal_loop_step")
+    @patch("generate_predictor_identification_data.initialize_refrigeration_dynamic_state")
+    @patch("generate_predictor_identification_data.BatteryPack")
+    def test_two_step_rollout_chains_dynamic_state_and_increments_time(
+        self,
+        battery_pack,
+        initialize_state,
+        simulate_step,
+        _staged_fan,
+        _pump_model,
+        run_cycle,
+    ):
+        battery_pack.side_effect = self.FakePack
+        initialize_state.return_value = {"token": "initial"}
+        first_result = self._thermal_result()
+        first_result["dynamic_state"] = {"token": "step-1"}
+        second_result = self._thermal_result()
+        second_result["dynamic_state"] = {"token": "step-2"}
+        simulate_step.side_effect = [first_result, second_result]
+        run_cycle.return_value = self._cycle_result()
+        spec = replace(
+            self._spec(),
+            steps=2,
+            compressor_command_rpm=(3200.0, 3400.0),
+            pump_command_rpm=(2400.0, 2600.0),
+            current_a=(400.0, 440.0),
+        )
+
+        rows = run_dynamic_scenario(spec, split="train")
+
+        self.assertEqual([row["time_s"] for row in rows], [5.0, 10.0])
+        self.assertEqual(
+            simulate_step.call_args_list[0].kwargs["dynamic_state"],
+            {"token": "initial"},
+        )
+        self.assertEqual(
+            simulate_step.call_args_list[1].kwargs["dynamic_state"],
+            {"token": "step-1"},
+        )
+
+    @patch("generate_predictor_identification_data.run_refrigeration_cycle")
+    @patch("generate_predictor_identification_data.pump_model", return_value=(0.23, 23.0))
+    @patch("generate_predictor_identification_data.staged_fan_speed", return_value=777.0)
+    @patch("generate_predictor_identification_data.simulate_thermal_loop_step")
+    @patch("generate_predictor_identification_data.initialize_refrigeration_dynamic_state")
+    @patch("generate_predictor_identification_data.BatteryPack")
+    def test_two_scenarios_create_fresh_pack_and_dynamic_state(
+        self,
+        battery_pack,
+        initialize_state,
+        simulate_step,
+        _staged_fan,
+        _pump_model,
+        run_cycle,
+    ):
+        battery_pack.side_effect = self.FakePack
+        initialize_state.side_effect = [
+            {"scenario": "first"},
+            {"scenario": "second"},
+        ]
+        first_result = self._thermal_result()
+        first_result["dynamic_state"] = {"scenario": "first-next"}
+        second_result = self._thermal_result()
+        second_result["dynamic_state"] = {"scenario": "second-next"}
+        simulate_step.side_effect = [first_result, second_result]
+        run_cycle.return_value = self._cycle_result()
+        first = self._spec("dynamic_first")
+        second = replace(
+            self._spec("dynamic_second"),
+            seed=42,
+            compressor_command_rpm=(3500.0,),
+            pump_command_rpm=(2600.0,),
+        )
+
+        rows = generate_dynamic_rows([first, second], seed=99)
+
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(battery_pack.call_count, 2)
+        self.assertEqual(len(self.FakePack.instances), 2)
+        self.assertEqual(
+            initialize_state.call_args_list,
+            [call(3200.0, 2400.0), call(3500.0, 2600.0)],
+        )
+        self.assertEqual(
+            simulate_step.call_args_list[0].kwargs["dynamic_state"],
+            {"scenario": "first"},
+        )
+        self.assertEqual(
+            simulate_step.call_args_list[1].kwargs["dynamic_state"],
+            {"scenario": "second"},
+        )
 
     @patch("generate_predictor_identification_data.run_refrigeration_cycle")
     @patch("generate_predictor_identification_data.pump_model")
@@ -724,7 +1100,7 @@ class DynamicRolloutTest(unittest.TestCase):
         self.assertEqual(row["q_ref_max_w"], 0.0)
 
     @patch("generate_predictor_identification_data.run_dynamic_scenario")
-    @patch("generate_predictor_identification_data.assign_scenario_splits")
+    @patch("generate_predictor_identification_data.assign_dynamic_scenario_splits")
     def test_generate_dynamic_rows_assigns_splits_once_before_rollout(
         self, assign_splits, run_scenario
     ):
@@ -745,9 +1121,7 @@ class DynamicRolloutTest(unittest.TestCase):
 
         rows = generate_dynamic_rows(specs, seed=99)
 
-        assign_splits.assert_called_once_with(
-            [spec.scenario_id for spec in specs], seed=99
-        )
+        assign_splits.assert_called_once_with(specs, seed=99)
         self.assertEqual(
             run_scenario.call_args_list,
             [call(spec, assignment[spec.scenario_id]) for spec in specs],

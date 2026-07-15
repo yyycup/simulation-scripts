@@ -2,15 +2,19 @@ import argparse
 from collections.abc import Mapping
 from dataclasses import dataclass
 import hashlib
+from itertools import product
 import json
 import math
+import os
 from pathlib import Path
+import uuid
 
 from btms_runtime import ensure_env_library_bin_on_path
 
 ensure_env_library_bin_on_path()
 
 import numpy as np
+import pack as pack_module
 import pandas as pd
 import thermal_batch_config as thermal_batch_config_module
 import thermal_loop as thermal_loop_module
@@ -106,12 +110,75 @@ def build_configuration_hash(configuration, plant_source_hash):
     return hashlib.sha256(snapshot_json.encode("utf-8")).hexdigest()
 
 
+def hash_file_content(path, label="file"):
+    try:
+        content = Path(path).read_bytes()
+    except OSError as exc:
+        raise RuntimeError(f"Cannot read {label} content: {exc}") from exc
+    return hashlib.sha256(content).hexdigest()
+
+
+def build_dynamic_source_hash(
+    plant_source_hash, battery_pack_source_hash, hppc_parameters_hash
+):
+    snapshot = {
+        "plant_source_hash": str(plant_source_hash),
+        "battery_pack_source_hash": str(battery_pack_source_hash),
+        "hppc_parameters_hash": str(hppc_parameters_hash),
+    }
+    encoded = json.dumps(
+        snapshot,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def build_dynamic_configuration_hash(
+    configuration,
+    plant_source_hash,
+    battery_pack_source_hash,
+    hppc_parameters_hash,
+):
+    snapshot = {
+        "configuration": configuration,
+        "plant_source_hash": str(plant_source_hash),
+        "battery_pack_source_hash": str(battery_pack_source_hash),
+        "hppc_parameters_hash": str(hppc_parameters_hash),
+    }
+    encoded = json.dumps(
+        snapshot,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
 _PLANT_SOURCE_HASH = _build_plant_source_hash(
     (thermal_system_module, thermal_loop_module, thermal_batch_config_module)
 )
 _PLANT_MODEL_VERSION = f"sha256:{_PLANT_SOURCE_HASH[:12]}"
 _CONFIGURATION_HASH = build_configuration_hash(
     _CONFIGURATION, _PLANT_SOURCE_HASH
+)
+_BATTERY_PACK_SOURCE_HASH = hash_file_content(
+    pack_module.__file__, "BatteryPack source"
+)
+_HPPC_PARAMETERS_HASH = hash_file_content(
+    pack_module.HPPC_PARAMS_PATH, "HPPC parameters"
+)
+_DYNAMIC_SOURCE_HASH = build_dynamic_source_hash(
+    _PLANT_SOURCE_HASH,
+    _BATTERY_PACK_SOURCE_HASH,
+    _HPPC_PARAMETERS_HASH,
+)
+_DYNAMIC_CONFIGURATION_HASH = build_dynamic_configuration_hash(
+    _CONFIGURATION,
+    _PLANT_SOURCE_HASH,
+    _BATTERY_PACK_SOURCE_HASH,
+    _HPPC_PARAMETERS_HASH,
 )
 
 
@@ -251,13 +318,18 @@ def build_dynamic_scenarios(mode="full", seed=20260714):
         ("dynamic_full_comp_low_forward", 120, "compressor-only", 1, 0.95, 24.0, 20.0, 21.0, 20.0),
         ("dynamic_full_comp_mid_reverse", 150, "compressor-only", -1, 0.75, 32.0, 27.0, 28.0, 30.0),
         ("dynamic_full_comp_high_forward", 180, "compressor-only", 1, 0.55, 40.0, 34.0, 35.0, 40.0),
+        ("dynamic_full_comp_cross_reverse", 150, "compressor-only", -1, 0.85, 24.0, 34.0, 28.0, 30.0),
+        ("dynamic_full_comp_cross_forward", 120, "compressor-only", 1, 0.65, 40.0, 20.0, 35.0, 40.0),
         ("dynamic_full_pump_low_reverse", 120, "pump-only", -1, 0.90, 24.0, 27.0, 28.0, 40.0),
         ("dynamic_full_pump_mid_forward", 150, "pump-only", 1, 0.70, 32.0, 34.0, 35.0, 20.0),
         ("dynamic_full_pump_high_reverse", 180, "pump-only", -1, 0.50, 40.0, 20.0, 21.0, 30.0),
+        ("dynamic_full_pump_cross_forward", 120, "pump-only", 1, 0.80, 24.0, 34.0, 35.0, 30.0),
+        ("dynamic_full_pump_cross_reverse", 150, "pump-only", -1, 0.60, 40.0, 27.0, 21.0, 20.0),
         ("dynamic_full_combined_low_forward", 120, "combined", 1, 0.85, 24.0, 34.0, 21.0, 30.0),
         ("dynamic_full_combined_mid_reverse", 150, "combined", -1, 0.65, 32.0, 20.0, 28.0, 40.0),
         ("dynamic_full_combined_high_forward", 180, "combined", 1, 0.45, 40.0, 27.0, 35.0, 20.0),
         ("dynamic_full_combined_cross_reverse", 150, "combined", -1, 0.80, 32.0, 34.0, 21.0, 30.0),
+        ("dynamic_full_combined_cross_forward", 180, "combined", 1, 0.60, 24.0, 20.0, 35.0, 40.0),
     )
     return [
         _make_dynamic_spec(
@@ -284,6 +356,86 @@ def build_dynamic_scenarios(mode="full", seed=20260714):
             ambient_c,
         ) in enumerate(definitions)
     ]
+
+
+def _dynamic_split_rank(seed, scenario_id):
+    return hashlib.sha256(f"{seed}:{scenario_id}".encode("utf-8")).hexdigest()
+
+
+def assign_dynamic_scenario_splits(specs, seed=20260714):
+    specs = list(specs)
+    scenario_ids = [spec.scenario_id for spec in specs]
+    if len(set(scenario_ids)) != len(scenario_ids):
+        raise ValueError("Duplicate dynamic scenario_id values are not allowed")
+
+    base_splits = assign_scenario_splits(scenario_ids, seed=seed)
+    kinds = ("compressor-only", "pump-only", "combined")
+    grouped = {
+        kind: [spec for spec in specs if spec.excitation_kind == kind]
+        for kind in kinds
+    }
+    is_full_structure = (
+        len(specs) == 15
+        and all(len(grouped[kind]) == 5 for kind in kinds)
+        and all(
+            {spec.flow_direction for spec in grouped[kind]} == {-1, 1}
+            for kind in kinds
+        )
+    )
+    if not is_full_structure:
+        return base_splits
+
+    rank = {
+        scenario_id: _dynamic_split_rank(seed, scenario_id)
+        for scenario_id in scenario_ids
+    }
+    candidates = {
+        kind: sorted(
+            (spec.scenario_id for spec in grouped[kind]),
+            key=lambda scenario_id: (rank[scenario_id], scenario_id),
+        )
+        for kind in kinds
+    }
+    by_id = {spec.scenario_id: spec for spec in specs}
+    best = None
+    for validation_ids in product(*(candidates[kind] for kind in kinds)):
+        if {by_id[value].flow_direction for value in validation_ids} != {-1, 1}:
+            continue
+        remaining = {
+            kind: [
+                value
+                for value in candidates[kind]
+                if value != validation_ids[index]
+            ]
+            for index, kind in enumerate(kinds)
+        }
+        for test_ids in product(*(remaining[kind] for kind in kinds)):
+            if {by_id[value].flow_direction for value in test_ids} != {-1, 1}:
+                continue
+            score = (
+                sum(base_splits[value] != "validation" for value in validation_ids)
+                + sum(base_splits[value] != "test" for value in test_ids),
+                sum(base_splits[value] != "validation" for value in validation_ids),
+                tuple(rank[value] for value in validation_ids),
+                tuple(rank[value] for value in test_ids),
+            )
+            if best is None or score < best[0]:
+                best = (score, validation_ids, test_ids)
+    if best is None:
+        return base_splits
+
+    validation_ids = set(best[1])
+    test_ids = set(best[2])
+    return {
+        scenario_id: (
+            "validation"
+            if scenario_id in validation_ids
+            else "test"
+            if scenario_id in test_ids
+            else "train"
+        )
+        for scenario_id in sorted(scenario_ids)
+    }
 
 
 def build_steady_grid(mode="full"):
@@ -428,6 +580,7 @@ def generate_steady_rows(points, seed=20260714):
             "q_cond_ss_w": q_cond,
             "q_cond_eff_w": q_cond,
             "dataset_kind": "steady",
+            "dataset_seed": int(seed),
             "source_model": "thermal_system.run_refrigeration_cycle",
             "n_fan_cmd_rpm": n_fan,
             "n_fan_eff_rpm": n_fan,
@@ -815,7 +968,10 @@ def run_dynamic_scenario(spec, split="train"):
             "limit_type": limit_type,
             "plant_model_version": _PLANT_MODEL_VERSION,
             "plant_source_hash": _PLANT_SOURCE_HASH,
-            "configuration_hash": _CONFIGURATION_HASH,
+            "battery_pack_source_hash": _BATTERY_PACK_SOURCE_HASH,
+            "hppc_parameters_hash": _HPPC_PARAMETERS_HASH,
+            "dynamic_source_hash": _DYNAMIC_SOURCE_HASH,
+            "configuration_hash": _DYNAMIC_CONFIGURATION_HASH,
             **_CONFIGURATION,
         }
         rows.append(row)
@@ -832,7 +988,7 @@ def generate_dynamic_rows(specs, seed=20260714):
         raise ValueError("Duplicate dynamic scenario_id values are not allowed")
     for spec in specs:
         _validate_dynamic_scenario(spec)
-    scenario_splits = assign_scenario_splits(scenario_ids, seed=seed)
+    scenario_splits = assign_dynamic_scenario_splits(specs, seed=seed)
     if set(scenario_splits) != set(scenario_ids) or any(
         split not in VALID_SPLITS for split in scenario_splits.values()
     ):
@@ -841,6 +997,8 @@ def generate_dynamic_rows(specs, seed=20260714):
     rows = []
     for spec in specs:
         rows.extend(run_dynamic_scenario(spec, scenario_splits[spec.scenario_id]))
+    for row in rows:
+        row["dataset_seed"] = int(seed)
     frame = pd.DataFrame(rows)
     validate_identification_frame(frame)
     numeric = frame.select_dtypes(include=[np.number])
@@ -859,6 +1017,11 @@ def _parse_args():
     parser.add_argument("--mode", choices=("smoke", "full"), default="full")
     parser.add_argument("--seed", type=int, default=20260714)
     parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Replace existing requested CSV targets atomically.",
+    )
+    parser.add_argument(
         "--output-root",
         type=Path,
         default=Path("outputs/mpc_predictor_identification_v1"),
@@ -866,10 +1029,87 @@ def _parse_args():
     return parser.parse_args()
 
 
+def _requested_datasets(dataset):
+    return ("steady", "dynamic") if dataset == "all" else (dataset,)
+
+
+def _atomic_publish_frames(frames, targets, overwrite):
+    existing = [path for path in targets.values() if path.exists()]
+    if existing and not overwrite:
+        joined = ", ".join(str(path) for path in existing)
+        raise FileExistsError(
+            f"Output target already exists: {joined}. Use --overwrite to replace it."
+        )
+
+    token = uuid.uuid4().hex
+    temporary = {
+        kind: target.with_name(f".{target.name}.{token}.tmp")
+        for kind, target in targets.items()
+    }
+    backups = {}
+    published = []
+    try:
+        for kind, frame in frames.items():
+            frame.to_csv(temporary[kind], index=False, encoding="utf-8")
+
+        if not overwrite:
+            appeared = [path for path in targets.values() if path.exists()]
+            if appeared:
+                joined = ", ".join(str(path) for path in appeared)
+                raise FileExistsError(
+                    f"Output target already exists: {joined}. "
+                    "Use --overwrite to replace it."
+                )
+        else:
+            for kind, target in targets.items():
+                if target.exists():
+                    backup = target.with_name(f".{target.name}.{token}.bak")
+                    os.replace(target, backup)
+                    backups[kind] = backup
+
+        for kind, target in targets.items():
+            os.replace(temporary[kind], target)
+            published.append(kind)
+    except Exception:
+        for kind in published:
+            target = targets[kind]
+            if target.exists():
+                target.unlink()
+        for kind, backup in backups.items():
+            if backup.exists():
+                os.replace(backup, targets[kind])
+        for path in temporary.values():
+            if path.exists():
+                path.unlink()
+        for backup in backups.values():
+            if backup.exists():
+                backup.unlink()
+        raise
+    else:
+        for backup in backups.values():
+            if backup.exists():
+                backup.unlink()
+        for path in temporary.values():
+            if path.exists():
+                path.unlink()
+
+
 def main():
     args = _parse_args()
     args.output_root.mkdir(parents=True, exist_ok=True)
-    datasets = ("steady", "dynamic") if args.dataset == "all" else (args.dataset,)
+    datasets = _requested_datasets(args.dataset)
+    targets = {
+        dataset_kind: args.output_root / f"{dataset_kind}_{args.mode}.csv"
+        for dataset_kind in datasets
+    }
+    existing = [path for path in targets.values() if path.exists()]
+    if existing and not args.overwrite:
+        joined = ", ".join(str(path) for path in existing)
+        raise FileExistsError(
+            f"Output target already exists: {joined}. Use --overwrite to replace it."
+        )
+
+    frames = {}
     for dataset_kind in datasets:
         if dataset_kind == "steady":
             rows = generate_steady_rows(
@@ -881,10 +1121,22 @@ def main():
                 seed=args.seed,
             )
         frame = pd.DataFrame(rows)
+        frame["dataset_seed"] = int(args.seed)
         validate_identification_frame(frame)
-        output_path = args.output_root / f"{dataset_kind}_{args.mode}.csv"
-        frame.to_csv(output_path, index=False, encoding="utf-8")
-        print(f"Wrote {len(frame)} rows to {output_path}")
+        frames[dataset_kind] = frame
+
+    _atomic_publish_frames(frames, targets, overwrite=args.overwrite)
+    for dataset_kind in datasets:
+        configuration_hash = (
+            _CONFIGURATION_HASH
+            if dataset_kind == "steady"
+            else _DYNAMIC_CONFIGURATION_HASH
+        )
+        print(
+            f"Wrote {len(frames[dataset_kind])} rows to "
+            f"{targets[dataset_kind]} seed={args.seed} "
+            f"configuration_hash={configuration_hash}"
+        )
 
 
 if __name__ == "__main__":
