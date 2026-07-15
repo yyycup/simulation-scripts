@@ -1,5 +1,6 @@
 from dataclasses import replace
 from io import StringIO
+import json
 import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -27,6 +28,28 @@ from generate_predictor_identification_data import (
 
 
 class GeneratePredictorIdentificationDataTest(unittest.TestCase):
+    @staticmethod
+    def _valid_hppc_fixture():
+        data = {
+            "soc": [0.2, 0.8],
+            "temp": [20.0, 30.0],
+            "ocv": [3.4, 3.8],
+        }
+        for key in (
+            "r0_dis",
+            "r0_chg",
+            "r1_dis",
+            "r1_chg",
+            "c1_dis",
+            "c1_chg",
+            "r2_dis",
+            "r2_chg",
+            "c2_dis",
+            "c2_chg",
+        ):
+            data[key] = [[1.0, 2.0], [3.0, 4.0]]
+        return data
+
     @staticmethod
     def _valid_cycle_result():
         return {
@@ -352,6 +375,153 @@ class GeneratePredictorIdentificationDataTest(unittest.TestCase):
                 ["dynamic_smoke.csv", "steady_smoke.csv"],
             )
 
+    def test_no_overwrite_publish_preserves_concurrent_target_and_rolls_back_group(self):
+        from generate_predictor_identification_data import _atomic_publish_frames
+
+        frames = {
+            "steady": pd.DataFrame({"value": [1]}),
+            "dynamic": pd.DataFrame({"value": [2]}),
+        }
+        real_link = os.link
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            targets = {
+                "steady": root / "steady_smoke.csv",
+                "dynamic": root / "dynamic_smoke.csv",
+            }
+
+            def create_concurrent_dynamic_before_link(source, target):
+                target = Path(target)
+                if target == targets["dynamic"]:
+                    target.write_text("concurrent-dynamic", encoding="utf-8")
+                return real_link(source, target)
+
+            with patch(
+                "generate_predictor_identification_data.os.link",
+                side_effect=create_concurrent_dynamic_before_link,
+            ):
+                with self.assertRaisesRegex(FileExistsError, "dynamic_smoke.csv"):
+                    _atomic_publish_frames(frames, targets, overwrite=False)
+
+            self.assertFalse(targets["steady"].exists())
+            self.assertEqual(
+                targets["dynamic"].read_text(encoding="utf-8"),
+                "concurrent-dynamic",
+            )
+            self.assertEqual(
+                sorted(path.name for path in root.iterdir()),
+                ["dynamic_smoke.csv"],
+            )
+
+    def test_rollback_keeps_failed_backup_and_restores_other_targets(self):
+        from generate_predictor_identification_data import _atomic_publish_frames
+
+        frames = {
+            "steady": pd.DataFrame({"value": [1]}),
+            "dynamic": pd.DataFrame({"value": [2]}),
+        }
+        real_replace = os.replace
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            targets = {
+                "steady": root / "steady_smoke.csv",
+                "dynamic": root / "dynamic_smoke.csv",
+            }
+            targets["steady"].write_text("old-steady", encoding="utf-8")
+            targets["dynamic"].write_text("old-dynamic", encoding="utf-8")
+
+            def fail_publish_and_one_restore(source, target):
+                source = Path(source)
+                target = Path(target)
+                if source.name.endswith(".tmp") and target == targets["dynamic"]:
+                    raise OSError("second publish failed")
+                if source.name.endswith(".bak") and target == targets["steady"]:
+                    raise OSError("steady restore failed")
+                return real_replace(source, target)
+
+            with patch(
+                "generate_predictor_identification_data.os.replace",
+                side_effect=fail_publish_and_one_restore,
+            ):
+                with self.assertRaisesRegex(
+                    RuntimeError,
+                    "second publish failed.*steady restore failed",
+                ) as caught:
+                    _atomic_publish_frames(frames, targets, overwrite=True)
+
+            self.assertIsInstance(caught.exception.__cause__, OSError)
+            self.assertIn("second publish failed", str(caught.exception.__cause__))
+            self.assertFalse(targets["steady"].exists())
+            self.assertEqual(
+                targets["dynamic"].read_text(encoding="utf-8"), "old-dynamic"
+            )
+            steady_backups = list(root.glob(".steady_smoke.csv.*.bak"))
+            self.assertEqual(len(steady_backups), 1)
+            self.assertEqual(
+                steady_backups[0].read_text(encoding="utf-8"), "old-steady"
+            )
+            self.assertFalse(any(root.glob("*.tmp")))
+            self.assertFalse(any(root.glob(".dynamic_smoke.csv.*.bak")))
+
+    def test_rollback_continues_after_published_target_unlink_failure(self):
+        from generate_predictor_identification_data import _atomic_publish_frames
+
+        frames = {
+            "steady": pd.DataFrame({"value": [1]}),
+            "dynamic": pd.DataFrame({"value": [2]}),
+        }
+        real_replace = os.replace
+        real_unlink = Path.unlink
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            targets = {
+                "steady": root / "steady_smoke.csv",
+                "dynamic": root / "dynamic_smoke.csv",
+            }
+            targets["steady"].write_text("old-steady", encoding="utf-8")
+            targets["dynamic"].write_text("old-dynamic", encoding="utf-8")
+
+            def fail_second_publish(source, target):
+                source = Path(source)
+                target = Path(target)
+                if source.name.endswith(".tmp") and target == targets["dynamic"]:
+                    raise OSError("second publish failed")
+                return real_replace(source, target)
+
+            unlink_failed = False
+
+            def fail_first_published_unlink(path, *args, **kwargs):
+                nonlocal unlink_failed
+                if Path(path) == targets["steady"] and not unlink_failed:
+                    unlink_failed = True
+                    raise OSError("steady unlink failed")
+                return real_unlink(path, *args, **kwargs)
+
+            with patch(
+                "generate_predictor_identification_data.os.replace",
+                side_effect=fail_second_publish,
+            ), patch.object(
+                Path,
+                "unlink",
+                autospec=True,
+                side_effect=fail_first_published_unlink,
+            ):
+                with self.assertRaisesRegex(
+                    RuntimeError,
+                    "second publish failed.*steady unlink failed",
+                ):
+                    _atomic_publish_frames(frames, targets, overwrite=True)
+
+            self.assertTrue(unlink_failed)
+            self.assertEqual(
+                targets["steady"].read_text(encoding="utf-8"), "old-steady"
+            )
+            self.assertEqual(
+                targets["dynamic"].read_text(encoding="utf-8"), "old-dynamic"
+            )
+            self.assertFalse(any(root.glob("*.tmp")))
+            self.assertFalse(any(root.glob("*.bak")))
+
     def test_windows_runtime_path_is_prepared_before_pack_import(self):
         source = Path("generate_predictor_identification_data.py").read_text(
             encoding="utf-8"
@@ -422,6 +592,49 @@ class GeneratePredictorIdentificationDataTest(unittest.TestCase):
             missing = Path(tmp) / "missing-hppc.json"
             with self.assertRaisesRegex(RuntimeError, "read.*HPPC"):
                 hash_file_content(missing, "HPPC parameters")
+
+    def test_hppc_parameter_file_accepts_valid_minimal_fixture(self):
+        from generate_predictor_identification_data import (
+            validate_hppc_parameter_file,
+        )
+
+        with TemporaryDirectory() as tmp:
+            path = Path(tmp) / "hppc.json"
+            path.write_text(
+                json.dumps(self._valid_hppc_fixture()), encoding="utf-8"
+            )
+
+            validate_hppc_parameter_file(path)
+
+    @patch("generate_predictor_identification_data.BatteryPack")
+    def test_invalid_hppc_files_fail_before_battery_pack_construction(self, battery_pack):
+        invalid_cases = []
+        missing = self._valid_hppc_fixture()
+        del missing["c2_chg"]
+        invalid_cases.append(("malformed", "{", "JSON"))
+        invalid_cases.append(("missing", json.dumps(missing), "c2_chg"))
+        wrong_shape = self._valid_hppc_fixture()
+        wrong_shape["r0_dis"] = [1.0, 2.0, 3.0]
+        invalid_cases.append(("shape", json.dumps(wrong_shape), "r0_dis.*shape"))
+        nonfinite = self._valid_hppc_fixture()
+        nonfinite["r1_chg"][0][0] = float("nan")
+        invalid_cases.append(("nan", json.dumps(nonfinite), "JSON.*NaN"))
+
+        with TemporaryDirectory() as tmp:
+            for name, content, message in invalid_cases:
+                with self.subTest(name=name):
+                    path = Path(tmp) / f"{name}.json"
+                    path.write_text(content, encoding="utf-8")
+                    with patch(
+                        "generate_predictor_identification_data.pack_module.HPPC_PARAMS_PATH",
+                        path,
+                    ):
+                        with self.assertRaisesRegex(ValueError, message) as caught:
+                            run_dynamic_scenario(
+                                DynamicRolloutTest._spec(), split="train"
+                            )
+                    self.assertIn(str(path), str(caught.exception))
+                    battery_pack.assert_not_called()
 
     @patch("generate_predictor_identification_data.run_refrigeration_cycle")
     @patch("generate_predictor_identification_data.staged_fan_speed")
@@ -802,6 +1015,7 @@ class DynamicRolloutTest(unittest.TestCase):
         self.assertEqual(row["q_evap_ss_w"], 900.0)
         self.assertEqual(row["q_cond_ss_w"], 1200.0)
         self.assertEqual(row["t_cool_c"], 27.0)
+        self.assertEqual(row["t_cool_cycle_input_c"], 26.0)
         self.assertEqual(row["t_batt_c"], 30.0)
         self.assertEqual(row["scenario_seed"], 41)
         self.assertIs(type(row["scenario_seed"]), int)
@@ -813,6 +1027,8 @@ class DynamicRolloutTest(unittest.TestCase):
         ):
             self.assertRegex(row[key], r"^[0-9a-f]{64}$")
         self.assertEqual(row["dataset_kind"], "dynamic")
+        self.assertEqual(row["hppc_data_source"], "file")
+        self.assertIs(row["hppc_fallback_used"], False)
         self.assertEqual(
             row["source_model"], "thermal_loop.simulate_thermal_loop_step"
         )
@@ -823,7 +1039,7 @@ class DynamicRolloutTest(unittest.TestCase):
         self.assertEqual(simulate_step.call_args.kwargs["T_outdoor"], 308.15)
         staged_fan.assert_called_once_with(3100.0)
         pump_model.assert_called_once_with(2300.0)
-        run_cycle.assert_called_once_with(3100.0, 777.0, 300.15, 0.23, 308.15)
+        run_cycle.assert_called_once_with(3100.0, 777.0, 299.15, 0.23, 308.15)
         fake_pack = self.FakePack.instances[0]
         self.assertEqual(fake_pack.current, 400.0)
         self.assertEqual(fake_pack.step_calls[0][0], 5.0)
@@ -851,8 +1067,10 @@ class DynamicRolloutTest(unittest.TestCase):
         battery_pack.side_effect = self.FakePack
         initialize_state.return_value = {"token": "initial"}
         first_result = self._thermal_result()
+        first_result["T_tank_K"] = 300.15
         first_result["dynamic_state"] = {"token": "step-1"}
         second_result = self._thermal_result()
+        second_result["T_tank_K"] = 302.15
         second_result["dynamic_state"] = {"token": "step-2"}
         simulate_step.side_effect = [first_result, second_result]
         run_cycle.return_value = self._cycle_result()
@@ -875,6 +1093,19 @@ class DynamicRolloutTest(unittest.TestCase):
             simulate_step.call_args_list[1].kwargs["dynamic_state"],
             {"token": "step-1"},
         )
+        self.assertEqual(
+            [entry.kwargs["T_tank_K"] for entry in simulate_step.call_args_list],
+            [299.15, 300.15],
+        )
+        self.assertEqual(
+            [entry.args[2] for entry in run_cycle.call_args_list],
+            [299.15, 300.15],
+        )
+        self.assertEqual(
+            [row["t_cool_cycle_input_c"] for row in rows],
+            [26.0, 27.0],
+        )
+        self.assertEqual([row["t_cool_c"] for row in rows], [27.0, 29.0])
 
     @patch("generate_predictor_identification_data.run_refrigeration_cycle")
     @patch("generate_predictor_identification_data.pump_model", return_value=(0.23, 23.0))

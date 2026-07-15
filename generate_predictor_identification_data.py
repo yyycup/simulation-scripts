@@ -118,6 +118,116 @@ def hash_file_content(path, label="file"):
     return hashlib.sha256(content).hexdigest()
 
 
+_HPPC_REQUIRED_KEYS = (
+    "soc",
+    "temp",
+    "ocv",
+    "r0_dis",
+    "r0_chg",
+    "r1_dis",
+    "r1_chg",
+    "c1_dis",
+    "c1_chg",
+    "r2_dis",
+    "r2_chg",
+    "c2_dis",
+    "c2_chg",
+)
+
+
+def validate_hppc_parameter_file(path=pack_module.HPPC_PARAMS_PATH):
+    path = Path(path)
+    try:
+        text = path.read_text(encoding="utf-8", errors="strict")
+    except (OSError, UnicodeError) as exc:
+        raise ValueError(
+            f"Invalid HPPC parameter file {path}: key=<document> "
+            f"shape=<unreadable>: {exc}"
+        ) from exc
+
+    def reject_constant(value):
+        raise ValueError(f"non-standard JSON constant {value}")
+
+    try:
+        data = json.loads(text, parse_constant=reject_constant)
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise ValueError(
+            f"Invalid HPPC parameter file {path}: key=<document> "
+            f"shape=<invalid-json>: JSON decode failed: {exc}"
+        ) from exc
+    if not isinstance(data, dict):
+        raise ValueError(
+            f"Invalid HPPC parameter file {path}: key=<document> "
+            f"shape={type(data).__name__}; expected JSON object"
+        )
+
+    for key in _HPPC_REQUIRED_KEYS:
+        if key not in data:
+            raise ValueError(
+                f"Invalid HPPC parameter file {path}: key={key} "
+                "shape=<missing>"
+            )
+
+    axes = {}
+    for key in ("soc", "temp"):
+        try:
+            values = np.asarray(data[key], dtype=float)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"Invalid HPPC parameter file {path}: key={key} "
+                "shape=<non-numeric>"
+            ) from exc
+        if values.ndim != 1 or values.size == 0 or not np.isfinite(values).all():
+            raise ValueError(
+                f"Invalid HPPC parameter file {path}: key={key} "
+                f"shape={values.shape}; expected non-empty finite 1D values"
+            )
+        axes[key] = values
+
+    n_soc = axes["soc"].size
+    n_temp = axes["temp"].size
+    try:
+        ocv = np.asarray(data["ocv"], dtype=float)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"Invalid HPPC parameter file {path}: key=ocv "
+            "shape=<non-numeric>"
+        ) from exc
+    valid_ocv_shapes = (
+        (n_soc,),
+        (n_soc, n_temp),
+        (n_soc * n_temp,),
+    )
+    if ocv.shape not in valid_ocv_shapes or not np.isfinite(ocv).all():
+        raise ValueError(
+            f"Invalid HPPC parameter file {path}: key=ocv shape={ocv.shape}; "
+            f"expected one of {valid_ocv_shapes} with finite values"
+        )
+
+    expected_matrix_shape = (n_soc, n_temp)
+    expected_flat_shape = (n_soc * n_temp,)
+    for key in _HPPC_REQUIRED_KEYS[3:]:
+        try:
+            values = np.asarray(data[key], dtype=float)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"Invalid HPPC parameter file {path}: key={key} "
+                "shape=<non-numeric>"
+            ) from exc
+        if values.shape not in (expected_matrix_shape, expected_flat_shape):
+            raise ValueError(
+                f"Invalid HPPC parameter file {path}: key={key} "
+                f"shape={values.shape}; expected {expected_matrix_shape} "
+                f"or {expected_flat_shape}"
+            )
+        if not np.isfinite(values).all():
+            raise ValueError(
+                f"Invalid HPPC parameter file {path}: key={key} "
+                f"shape={values.shape}; values must be finite"
+            )
+    return data
+
+
 def build_dynamic_source_hash(
     plant_source_hash, battery_pack_source_hash, hppc_parameters_hash
 ):
@@ -755,6 +865,7 @@ def run_dynamic_scenario(spec, split="train"):
     compressor, pump, current = _validate_dynamic_scenario(spec)
     if split not in VALID_SPLITS:
         raise ValueError(f"{spec.scenario_id}: invalid split={split!r}")
+    validate_hppc_parameter_file(pack_module.HPPC_PARAMS_PATH)
 
     pack_config = build_pack_config(
         total_current=float(current[0]),
@@ -773,10 +884,11 @@ def run_dynamic_scenario(spec, split="train"):
     for index in range(spec.steps):
         n_comp_cmd = float(compressor[index])
         n_pump_cmd = float(pump[index])
+        t_tank_input_k = t_tank_k
         pack.current = float(current[index])
         thermal_step = simulate_thermal_loop_step(
             pack=pack,
-            T_tank_K=t_tank_k,
+            T_tank_K=t_tank_input_k,
             T_plate_K_array=t_plate_k,
             N_comp_cmd=n_comp_cmd,
             N_pump_cmd=n_pump_cmd,
@@ -870,7 +982,7 @@ def run_dynamic_scenario(spec, split="train"):
         cycle = run_refrigeration_cycle(
             n_comp_eff,
             n_fan_ss,
-            t_tank_k,
+            t_tank_input_k,
             m_dot_cool,
             t_ambient_k,
         )
@@ -930,6 +1042,7 @@ def run_dynamic_scenario(spec, split="train"):
             "t_ambient_c": float(spec.ambient_c),
             "t_batt_c": t_batt_k - 273.15,
             "t_cool_c": t_tank_k - 273.15,
+            "t_cool_cycle_input_c": t_tank_input_k - 273.15,
             "t_plate_c": float(np.mean(t_plate_k)) - 273.15,
             "t_supply_c": t_supply_k - 273.15,
             "t_return_c": t_return_k - 273.15,
@@ -970,6 +1083,8 @@ def run_dynamic_scenario(spec, split="train"):
             "plant_source_hash": _PLANT_SOURCE_HASH,
             "battery_pack_source_hash": _BATTERY_PACK_SOURCE_HASH,
             "hppc_parameters_hash": _HPPC_PARAMETERS_HASH,
+            "hppc_data_source": "file",
+            "hppc_fallback_used": False,
             "dynamic_source_hash": _DYNAMIC_SOURCE_HASH,
             "configuration_hash": _DYNAMIC_CONFIGURATION_HASH,
             **_CONFIGURATION,
@@ -1052,15 +1167,7 @@ def _atomic_publish_frames(frames, targets, overwrite):
         for kind, frame in frames.items():
             frame.to_csv(temporary[kind], index=False, encoding="utf-8")
 
-        if not overwrite:
-            appeared = [path for path in targets.values() if path.exists()]
-            if appeared:
-                joined = ", ".join(str(path) for path in appeared)
-                raise FileExistsError(
-                    f"Output target already exists: {joined}. "
-                    "Use --overwrite to replace it."
-                )
-        else:
+        if overwrite:
             for kind, target in targets.items():
                 if target.exists():
                     backup = target.with_name(f".{target.name}.{token}.bak")
@@ -1068,22 +1175,49 @@ def _atomic_publish_frames(frames, targets, overwrite):
                     backups[kind] = backup
 
         for kind, target in targets.items():
-            os.replace(temporary[kind], target)
-            published.append(kind)
-    except Exception:
+            if overwrite:
+                os.replace(temporary[kind], target)
+                published.append(kind)
+            else:
+                try:
+                    os.link(temporary[kind], target)
+                except FileExistsError as exc:
+                    raise FileExistsError(
+                        f"Output target appeared during publish: {target}. "
+                        "Use --overwrite to replace it."
+                    ) from exc
+                published.append(kind)
+                temporary[kind].unlink()
+    except Exception as publish_error:
+        rollback_errors = []
         for kind in published:
             target = targets[kind]
-            if target.exists():
-                target.unlink()
+            try:
+                if target.exists():
+                    target.unlink()
+            except Exception as exc:
+                rollback_errors.append(
+                    f"remove published target {target}: {exc}"
+                )
         for kind, backup in backups.items():
-            if backup.exists():
-                os.replace(backup, targets[kind])
+            try:
+                if backup.exists():
+                    os.replace(backup, targets[kind])
+            except Exception as exc:
+                rollback_errors.append(
+                    f"restore backup {backup} -> {targets[kind]}: {exc}"
+                )
         for path in temporary.values():
-            if path.exists():
-                path.unlink()
-        for backup in backups.values():
-            if backup.exists():
-                backup.unlink()
+            try:
+                if path.exists():
+                    path.unlink()
+            except Exception as exc:
+                rollback_errors.append(f"remove temporary file {path}: {exc}")
+        if rollback_errors:
+            details = "; ".join(rollback_errors)
+            raise RuntimeError(
+                f"Publish failed: {publish_error}; rollback errors: {details}"
+            ) from publish_error
         raise
     else:
         for backup in backups.values():
