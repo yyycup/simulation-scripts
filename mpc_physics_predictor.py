@@ -1,4 +1,6 @@
 import math
+from collections import deque
+from dataclasses import dataclass
 from numbers import Real
 from pathlib import Path
 
@@ -18,6 +20,36 @@ DEFAULT_INPUT_DOMAIN = {
     "t_ambient_c": [20.0, 40.0],
 }
 
+DEFAULT_DYNAMIC_PARAMETERS = {
+    "time_constant_model": "constant",
+    "tau_comp_s": 5.0,
+    "tau_pump_s": 5.0,
+    "evap_input_delay_s": 20.0,
+    "pump_flow_delay_s": 5.0,
+    "tau_cond_s": 75.0,
+    "tau_evap_s": 45.0,
+    "supply_delay_s": 15.0,
+    "return_delay_s": 20.0,
+}
+
+DEFAULT_THERMAL_PARAMETERS = {
+    "coolant_cp_j_kg_k": 3500.0,
+    "coolant_mass_flow_ref_kg_s": 0.25,
+    "n_pump_ref_rpm": 2000.0,
+    "battery_heat_capacity_j_k": 246844.0,
+    "coolant_heat_capacity_j_k": 100000.0,
+    "battery_plate_conductance_w_k": 520.0,
+    "plate_tau_s": 20.0,
+    "ambient_conductance_w_k": 3.0,
+}
+
+SCHEDULE_PARAMETER_NAMES = {
+    "tau_comp_schedule_s",
+    "tau_pump_schedule_s",
+    "tau_cond_schedule_s",
+    "tau_evap_schedule_s",
+}
+
 
 DEFAULT_PHYSICS_ARTIFACT = {
     "model_type": PHYSICS_P,
@@ -29,7 +61,26 @@ DEFAULT_PHYSICS_ARTIFACT = {
         "q_upper_w": 4800.0,
     },
     "input_domain": DEFAULT_INPUT_DOMAIN,
+    "dynamic": DEFAULT_DYNAMIC_PARAMETERS,
+    "thermal": DEFAULT_THERMAL_PARAMETERS,
 }
+
+
+@dataclass(frozen=True)
+class PhysicsPredictorState:
+    n_comp_eff_rpm: float
+    n_pump_eff_rpm: float
+    evap_speed_history_rpm: tuple[float, ...]
+    pump_speed_history_rpm: tuple[float, ...]
+    q_cond_w: float
+    q_evap_w: float
+    supply_history_c: tuple[float, ...]
+    t_supply_c: float
+    t_plate_c: float
+    return_history_c: tuple[float, ...]
+    t_return_c: float
+    t_batt_c: float
+    t_cool_c: float
 
 
 class PhysicsArtifactError(PredictorArtifactError):
@@ -144,6 +195,46 @@ def validate_physics_artifact(artifact: object) -> dict:
             upper = _finite_number(limits[1], f"input_domain.{name}[1]")
             if lower >= upper:
                 raise ValueError(f"input_domain.{name} must satisfy min < max")
+
+        dynamic = artifact.get("dynamic")
+        thermal = artifact.get("thermal")
+        if (dynamic is None) != (thermal is None):
+            raise ValueError("dynamic and thermal must either both be present or both absent")
+        if dynamic is not None:
+            if not isinstance(dynamic, dict):
+                raise ValueError("dynamic must be an object")
+            model = dynamic.get("time_constant_model")
+            if model not in {"constant", "scheduled"}:
+                raise ValueError("dynamic.time_constant_model must be constant or scheduled")
+            required_dynamic = set(DEFAULT_DYNAMIC_PARAMETERS)
+            if model == "scheduled":
+                required_dynamic |= SCHEDULE_PARAMETER_NAMES
+            if set(dynamic) != required_dynamic:
+                raise ValueError(
+                    f"dynamic keys must be exactly {sorted(required_dynamic)}"
+                )
+            for name, value in dynamic.items():
+                if name == "time_constant_model":
+                    continue
+                number = _finite_number(value, f"dynamic.{name}")
+                if name in SCHEDULE_PARAMETER_NAMES:
+                    continue
+                if number < 0.0:
+                    raise ValueError(f"dynamic.{name} must be nonnegative")
+            for name in ("tau_comp_s", "tau_pump_s", "tau_cond_s", "tau_evap_s"):
+                if float(dynamic[name]) <= 0.0:
+                    raise ValueError(f"dynamic.{name} must be greater than zero")
+
+            if not isinstance(thermal, dict):
+                raise ValueError("thermal must be an object")
+            if set(thermal) != set(DEFAULT_THERMAL_PARAMETERS):
+                raise ValueError(
+                    f"thermal keys must be exactly {sorted(DEFAULT_THERMAL_PARAMETERS)}"
+                )
+            for name, value in thermal.items():
+                number = _finite_number(value, f"thermal.{name}")
+                if number <= 0.0:
+                    raise ValueError(f"thermal.{name} must be greater than zero")
     except (TypeError, ValueError) as exc:
         raise PhysicsArtifactError(str(exc)) from exc
     return artifact
@@ -204,3 +295,234 @@ def evaluate_physics_capacity(
     clipped_active = max(0.0, min(q_upper, active))
     raw = _finite_number(gate_value * clipped_active, "physics capacity result")
     return max(0.0, min(q_upper, raw))
+
+
+def lag_step(previous: object, target: object, dt_s: object, tau_s: object) -> float:
+    previous_value = _finite_number(previous, "previous")
+    target_value = _finite_number(target, "target")
+    dt = _finite_number(dt_s, "dt_s")
+    tau = _finite_number(tau_s, "tau_s")
+    if dt <= 0.0:
+        raise ValueError("dt_s must be greater than zero")
+    alpha = 1.0 if tau <= 0.0 else dt / (tau + dt)
+    return _finite_number(
+        previous_value + alpha * (target_value - previous_value),
+        "lag_step result",
+    )
+
+
+def consumed_parameter_names(artifact: object = None) -> set[str]:
+    selected = DEFAULT_PHYSICS_ARTIFACT if artifact is None else artifact
+    validate_physics_artifact(selected)
+    names = set(DEFAULT_DYNAMIC_PARAMETERS) | set(DEFAULT_THERMAL_PARAMETERS)
+    dynamic = selected.get("dynamic", DEFAULT_DYNAMIC_PARAMETERS)
+    if dynamic["time_constant_model"] == "scheduled":
+        names |= SCHEDULE_PARAMETER_NAMES
+    return names
+
+
+def initialize_physics_state(
+    n_comp_eff_rpm: object,
+    n_pump_eff_rpm: object,
+    q_cond_w: object,
+    q_evap_w: object,
+    t_supply_c: object,
+    t_plate_c: object,
+    t_return_c: object,
+    t_batt_c: object,
+    t_cool_c: object,
+) -> PhysicsPredictorState:
+    values = {
+        name: _finite_number(value, name)
+        for name, value in locals().items()
+    }
+    return PhysicsPredictorState(
+        n_comp_eff_rpm=values["n_comp_eff_rpm"],
+        n_pump_eff_rpm=values["n_pump_eff_rpm"],
+        evap_speed_history_rpm=(),
+        pump_speed_history_rpm=(),
+        q_cond_w=values["q_cond_w"],
+        q_evap_w=values["q_evap_w"],
+        supply_history_c=(),
+        t_supply_c=values["t_supply_c"],
+        t_plate_c=values["t_plate_c"],
+        return_history_c=(),
+        t_return_c=values["t_return_c"],
+        t_batt_c=values["t_batt_c"],
+        t_cool_c=values["t_cool_c"],
+    )
+
+
+def _delay_step(
+    history: tuple[float, ...],
+    new_value: float,
+    delay_s: float,
+    dt_s: float,
+    initial_value: float,
+) -> tuple[float, tuple[float, ...]]:
+    steps = max(0, int(round(delay_s / dt_s)))
+    if steps == 0:
+        return new_value, ()
+    buffer = deque(history[-steps:], maxlen=steps)
+    while len(buffer) < steps:
+        buffer.appendleft(initial_value)
+    delayed = buffer[0]
+    buffer.append(new_value)
+    return delayed, tuple(buffer)
+
+
+def _time_constant(
+    dynamic: dict,
+    name: str,
+    schedule_name: str,
+    coordinate: float,
+) -> float:
+    base = float(dynamic[name])
+    if dynamic["time_constant_model"] == "constant":
+        return base
+    return max(0.1, base + float(dynamic[schedule_name]) * coordinate)
+
+
+def step_physics_predictor(
+    state: PhysicsPredictorState,
+    n_comp_cmd_rpm: object,
+    n_pump_cmd_rpm: object,
+    q_gen_w: object,
+    t_ambient_c: object,
+    dt_s: object,
+    artifact: object = None,
+) -> PhysicsPredictorState:
+    if not isinstance(state, PhysicsPredictorState):
+        raise TypeError("state must be PhysicsPredictorState")
+    selected = DEFAULT_PHYSICS_ARTIFACT if artifact is None else artifact
+    validate_physics_artifact(selected)
+    dynamic = selected.get("dynamic", DEFAULT_DYNAMIC_PARAMETERS)
+    thermal = selected.get("thermal", DEFAULT_THERMAL_PARAMETERS)
+    dt = _finite_number(dt_s, "dt_s")
+    if dt <= 0.0:
+        raise ValueError("dt_s must be greater than zero")
+    n_comp_cmd = _finite_number(n_comp_cmd_rpm, "n_comp_cmd_rpm")
+    n_pump_cmd = _finite_number(n_pump_cmd_rpm, "n_pump_cmd_rpm")
+    q_gen = _finite_number(q_gen_w, "q_gen_w")
+    ambient = _finite_number(t_ambient_c, "t_ambient_c")
+
+    domain = selected.get("input_domain", DEFAULT_INPUT_DOMAIN)
+    comp_mid = 0.5 * sum(domain["n_comp_rpm"])
+    comp_half_range = 0.5 * (domain["n_comp_rpm"][1] - domain["n_comp_rpm"][0])
+    pump_mid = 0.5 * sum(domain["n_pump_rpm"])
+    pump_half_range = 0.5 * (domain["n_pump_rpm"][1] - domain["n_pump_rpm"][0])
+    comp_coordinate = max(-1.0, min(1.0, (state.n_comp_eff_rpm - comp_mid) / comp_half_range))
+    pump_coordinate = max(-1.0, min(1.0, (state.n_pump_eff_rpm - pump_mid) / pump_half_range))
+
+    # State order 1: effective actuator speeds.
+    n_comp_eff = lag_step(
+        state.n_comp_eff_rpm,
+        n_comp_cmd,
+        dt,
+        _time_constant(dynamic, "tau_comp_s", "tau_comp_schedule_s", comp_coordinate),
+    )
+    n_pump_eff = lag_step(
+        state.n_pump_eff_rpm,
+        n_pump_cmd,
+        dt,
+        _time_constant(dynamic, "tau_pump_s", "tau_pump_schedule_s", pump_coordinate),
+    )
+
+    # State order 2: compressor-input and pump-flow delays.
+    n_comp_delayed, evap_history = _delay_step(
+        state.evap_speed_history_rpm,
+        n_comp_eff,
+        float(dynamic["evap_input_delay_s"]),
+        dt,
+        state.n_comp_eff_rpm,
+    )
+    n_pump_delayed, pump_history = _delay_step(
+        state.pump_speed_history_rpm,
+        n_pump_eff,
+        float(dynamic["pump_flow_delay_s"]),
+        dt,
+        state.n_pump_eff_rpm,
+    )
+
+    # State order 3-5: P1 steady capacity and cascaded refrigeration dynamics.
+    q_steady = evaluate_physics_capacity(
+        n_comp_delayed,
+        n_pump_delayed,
+        state.t_cool_c,
+        ambient,
+        artifact=selected,
+    )
+    load_coordinate = max(-1.0, min(1.0, 2.0 * q_steady / selected["capacity"]["q_upper_w"] - 1.0))
+    q_cond = lag_step(
+        state.q_cond_w,
+        q_steady,
+        dt,
+        _time_constant(dynamic, "tau_cond_s", "tau_cond_schedule_s", load_coordinate),
+    )
+    q_evap = lag_step(
+        state.q_evap_w,
+        q_cond,
+        dt,
+        _time_constant(dynamic, "tau_evap_s", "tau_evap_schedule_s", load_coordinate),
+    )
+
+    pump_ref = float(thermal["n_pump_ref_rpm"])
+    pump_ratio = max(1e-6, n_pump_delayed / pump_ref)
+    mass_flow = float(thermal["coolant_mass_flow_ref_kg_s"]) * pump_ratio
+    flow_capacity = mass_flow * float(thermal["coolant_cp_j_kg_k"])
+
+    # State order 6-8: supply delay, cold plate, and return delay.
+    evaporator_out = state.t_cool_c - q_evap / flow_capacity
+    t_supply, supply_history = _delay_step(
+        state.supply_history_c,
+        evaporator_out,
+        float(dynamic["supply_delay_s"]),
+        dt,
+        state.t_supply_c,
+    )
+    t_plate = lag_step(
+        state.t_plate_c,
+        t_supply,
+        dt,
+        float(thermal["plate_tau_s"]),
+    )
+    conductance = float(thermal["battery_plate_conductance_w_k"]) * pump_ratio**0.8
+    q_batt_plate = conductance * (state.t_batt_c - t_plate)
+    plate_out = t_plate + q_batt_plate / flow_capacity
+    t_return, return_history = _delay_step(
+        state.return_history_c,
+        plate_out,
+        float(dynamic["return_delay_s"]),
+        dt,
+        state.t_return_c,
+    )
+
+    # State order 9-10: battery and coolant energy balances.
+    ambient_loss = float(thermal["ambient_conductance_w_k"]) * (state.t_batt_c - ambient)
+    t_batt = state.t_batt_c + dt * (q_gen - q_batt_plate - ambient_loss) / float(
+        thermal["battery_heat_capacity_j_k"]
+    )
+    t_cool = state.t_cool_c + dt * flow_capacity * (t_return - state.t_cool_c) / float(
+        thermal["coolant_heat_capacity_j_k"]
+    )
+
+    result = PhysicsPredictorState(
+        n_comp_eff_rpm=n_comp_eff,
+        n_pump_eff_rpm=n_pump_eff,
+        evap_speed_history_rpm=evap_history,
+        pump_speed_history_rpm=pump_history,
+        q_cond_w=q_cond,
+        q_evap_w=q_evap,
+        supply_history_c=supply_history,
+        t_supply_c=t_supply,
+        t_plate_c=t_plate,
+        return_history_c=return_history,
+        t_return_c=t_return,
+        t_batt_c=t_batt,
+        t_cool_c=t_cool,
+    )
+    for name, value in vars(result).items():
+        values = value if isinstance(value, tuple) else (value,)
+        for item in values:
+            _finite_number(item, f"state.{name}")
+    return result

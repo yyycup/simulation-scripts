@@ -12,13 +12,21 @@ import pandas as pd
 from fit_mpc_physics_predictor import (
     _validate_output_path,
     fit_physics_artifact,
+    fit_physics_dynamic,
     fit_physics_predictor,
 )
 from mpc_physics_predictor import (
     DEFAULT_INPUT_DOMAIN,
+    DEFAULT_DYNAMIC_PARAMETERS,
+    DEFAULT_THERMAL_PARAMETERS,
     PhysicsArtifactError,
+    PhysicsPredictorState,
+    consumed_parameter_names,
     evaluate_physics_capacity,
+    initialize_physics_state,
+    lag_step,
     load_physics_artifact,
+    step_physics_predictor,
     smooth_gate,
     validate_physics_artifact,
 )
@@ -74,6 +82,53 @@ def synthetic_frame(include_validation=True, test_target=123.0):
             target = evaluate_physics_capacity(*values, artifact=KNOWN_ARTIFACT)
             rows.append(make_row(f"validation_{index}", "validation", *values, target))
     rows.append(make_row("test_0", "test", 5500, 4400, 34, 42, test_target))
+    return pd.DataFrame(rows)
+
+
+def synthetic_dynamic_frame():
+    artifact = json.loads(json.dumps(KNOWN_ARTIFACT))
+    artifact["dynamic"] = json.loads(json.dumps(DEFAULT_DYNAMIC_PARAMETERS))
+    artifact["thermal"] = json.loads(json.dumps(DEFAULT_THERMAL_PARAMETERS))
+    rows = []
+    for split, scenario_id, offset in (
+        ("train", "dynamic_train", 0.0),
+        ("validation", "dynamic_validation", 150.0),
+        ("test", "dynamic_test", 300.0),
+    ):
+        state = initialize_physics_state(
+            2200.0, 2400.0, 300.0, 200.0, 27.0, 28.0, 28.5, 30.0, 27.5
+        )
+        for step in range(65):
+            n_comp = 2200.0 + offset + (1800.0 if 12 <= step < 40 else 0.0)
+            n_pump = 2400.0 + (1200.0 if 25 <= step < 50 else 0.0)
+            q_gen = 450.0 + (200.0 if step >= 35 else 0.0)
+            state = step_physics_predictor(
+                state, n_comp, n_pump, q_gen, 35.0, 5.0, artifact
+            )
+            row = make_row(
+                scenario_id,
+                split,
+                n_comp,
+                n_pump,
+                state.t_cool_c,
+                35.0,
+                0.0,
+            )
+            row.update(
+                time_s=5.0 * (step + 1),
+                q_gen_w=q_gen,
+                n_comp_eff_rpm=state.n_comp_eff_rpm,
+                n_pump_eff_rpm=state.n_pump_eff_rpm,
+                q_cond_eff_w=state.q_cond_w,
+                q_evap_eff_w=state.q_evap_w,
+                t_supply_c=state.t_supply_c,
+                t_plate_c=state.t_plate_c,
+                t_return_c=state.t_return_c,
+                t_batt_c=state.t_batt_c,
+                t_cool_c=state.t_cool_c,
+                dt_s=5.0,
+            )
+            rows.append(row)
     return pd.DataFrame(rows)
 
 
@@ -164,6 +219,142 @@ class PhysicsCapacityTests(unittest.TestCase):
             self.assertTrue(math.isfinite(value))
             self.assertGreaterEqual(value, 0.0)
             self.assertLessEqual(value, 4800.0)
+
+
+class PhysicsDynamicTests(unittest.TestCase):
+    def dynamic_artifact(self):
+        artifact = json.loads(json.dumps(KNOWN_ARTIFACT))
+        artifact["dynamic"] = json.loads(json.dumps(DEFAULT_DYNAMIC_PARAMETERS))
+        artifact["thermal"] = json.loads(json.dumps(DEFAULT_THERMAL_PARAMETERS))
+        return artifact
+
+    def test_lag_step_uses_project_first_order_convention(self):
+        self.assertEqual(lag_step(2.0, 10.0, 5.0, 0.0), 10.0)
+        self.assertAlmostEqual(lag_step(2.0, 10.0, 5.0, 15.0), 4.0)
+
+    def test_equilibrium_step_is_finite_and_remains_at_equilibrium(self):
+        artifact = self.dynamic_artifact()
+        state = initialize_physics_state(
+            n_comp_eff_rpm=1000.0,
+            n_pump_eff_rpm=2000.0,
+            q_cond_w=0.0,
+            q_evap_w=0.0,
+            t_supply_c=30.0,
+            t_plate_c=30.0,
+            t_return_c=30.0,
+            t_batt_c=30.0,
+            t_cool_c=30.0,
+        )
+        result = step_physics_predictor(
+            state,
+            n_comp_cmd_rpm=1000.0,
+            n_pump_cmd_rpm=2000.0,
+            q_gen_w=0.0,
+            t_ambient_c=30.0,
+            dt_s=5.0,
+            artifact=artifact,
+        )
+        self.assertIsInstance(result, PhysicsPredictorState)
+        for name, value in vars(result).items():
+            values = value if isinstance(value, tuple) else (value,)
+            self.assertTrue(all(math.isfinite(item) for item in values), name)
+        self.assertAlmostEqual(result.t_supply_c, 30.0)
+        self.assertAlmostEqual(result.t_plate_c, 30.0)
+        self.assertAlmostEqual(result.t_return_c, 30.0)
+        self.assertAlmostEqual(result.t_batt_c, 30.0)
+        self.assertAlmostEqual(result.t_cool_c, 30.0)
+
+    def test_more_cooling_lowers_supply_temperature(self):
+        artifact = self.dynamic_artifact()
+        artifact["dynamic"]["supply_delay_s"] = 0.0
+        state = initialize_physics_state(
+            n_comp_eff_rpm=6000.0,
+            n_pump_eff_rpm=3200.0,
+            q_cond_w=4800.0,
+            q_evap_w=4800.0,
+            t_supply_c=30.0,
+            t_plate_c=30.0,
+            t_return_c=30.0,
+            t_batt_c=30.0,
+            t_cool_c=30.0,
+        )
+        cooled = step_physics_predictor(
+            state, 6000.0, 3200.0, 0.0, 30.0, 5.0, artifact
+        )
+        off_state = initialize_physics_state(
+            n_comp_eff_rpm=1000.0,
+            n_pump_eff_rpm=3200.0,
+            q_cond_w=0.0,
+            q_evap_w=0.0,
+            t_supply_c=30.0,
+            t_plate_c=30.0,
+            t_return_c=30.0,
+            t_batt_c=30.0,
+            t_cool_c=30.0,
+        )
+        off = step_physics_predictor(
+            off_state, 1000.0, 3200.0, 0.0, 30.0, 5.0, artifact
+        )
+        self.assertLess(cooled.t_supply_c, off.t_supply_c)
+
+    def test_all_exported_dynamic_and_thermal_parameters_are_consumed(self):
+        artifact = self.dynamic_artifact()
+        exported = set(artifact["dynamic"]) | set(artifact["thermal"])
+        self.assertEqual(exported, consumed_parameter_names())
+
+    def test_each_exported_numeric_parameter_changes_the_rollout(self):
+        def rollout(artifact):
+            state = initialize_physics_state(
+                2200.0, 2400.0, 200.0, 100.0, 28.0, 29.0, 29.5, 31.0, 28.5
+            )
+            values = []
+            for step in range(24):
+                state = step_physics_predictor(
+                    state,
+                    5000.0 if step >= 3 else 2200.0,
+                    4000.0 if step >= 8 else 2400.0,
+                    700.0,
+                    35.0,
+                    5.0,
+                    artifact,
+                )
+                values.extend(
+                    value
+                    for value in vars(state).values()
+                    if not isinstance(value, tuple)
+                )
+            return np.asarray(values)
+
+        artifact = self.dynamic_artifact()
+        baseline = rollout(artifact)
+        for group in ("dynamic", "thermal"):
+            for name, value in artifact[group].items():
+                if not isinstance(value, (int, float)):
+                    continue
+                changed = json.loads(json.dumps(artifact))
+                increment = 5.1 if name.endswith("delay_s") else max(0.1, 0.1 * value)
+                changed[group][name] = value + increment
+                with self.subTest(group=group, name=name):
+                    self.assertFalse(np.array_equal(baseline, rollout(changed)))
+        scheduled = self.dynamic_artifact()
+        scheduled["dynamic"]["time_constant_model"] = "scheduled"
+        for name in (
+            "tau_comp_schedule_s",
+            "tau_pump_schedule_s",
+            "tau_cond_schedule_s",
+            "tau_evap_schedule_s",
+        ):
+            scheduled["dynamic"][name] = 0.0
+        scheduled_baseline = rollout(scheduled)
+        self.assertEqual(
+            set(scheduled["dynamic"]) | set(scheduled["thermal"]),
+            consumed_parameter_names(scheduled),
+        )
+        for name in set(scheduled["dynamic"]) - set(DEFAULT_DYNAMIC_PARAMETERS):
+            changed = json.loads(json.dumps(scheduled))
+            changed["dynamic"][name] = 5.0
+            with self.subTest(group="scheduled", name=name):
+                self.assertFalse(np.array_equal(scheduled_baseline, rollout(changed)))
 
 
 class PhysicsArtifactTests(unittest.TestCase):
@@ -396,6 +587,83 @@ class PhysicsFitTests(unittest.TestCase):
                 ):
                     with self.assertRaisesRegex(RuntimeError, "all candidates failed"):
                         fit_physics_predictor(train, validation)
+
+    def test_dynamic_fit_exports_consumed_parameters_and_horizon_metadata(self):
+        capacity = fit_physics_artifact(synthetic_frame())
+        artifact = fit_physics_dynamic(capacity, synthetic_dynamic_frame())
+        validate_physics_artifact(artifact)
+        self.assertEqual(
+            set(artifact["dynamic"]) | set(artifact["thermal"]),
+            consumed_parameter_names(artifact),
+        )
+        metadata = artifact["fit"]["dynamic_fit"]
+        self.assertEqual(metadata["training_horizons_steps"], [10, 20, 60])
+        self.assertEqual(metadata["selection_source"], "validation_only")
+        self.assertEqual(metadata["scheduled_minimum_improvement"], 0.10)
+        self.assertIn(metadata["selected_time_constant_model"], {"constant", "scheduled"})
+        if metadata["selected_time_constant_model"] == "scheduled":
+            self.assertGreaterEqual(metadata["scheduled_improvement"], 0.10)
+
+    def test_dynamic_test_rows_features_and_targets_do_not_affect_fit(self):
+        dynamic = synthetic_dynamic_frame()
+        altered = dynamic.copy()
+        test_mask = altered["split"] == "test"
+        altered.loc[test_mask, "q_evap_eff_w"] = 1e9
+        altered.loc[test_mask, "q_cond_eff_w"] = -1e9
+        altered.loc[test_mask, "t_batt_c"] = 1e6
+        altered.loc[test_mask, "n_comp_cmd_rpm"] = 1e8
+        altered = pd.concat([altered, altered.loc[test_mask]], ignore_index=True)
+        capacity = fit_physics_artifact(synthetic_frame())
+        first = fit_physics_dynamic(capacity, dynamic)
+        second = fit_physics_dynamic(capacity, altered)
+        self.assertEqual(first["dynamic"], second["dynamic"])
+        self.assertEqual(first["thermal"], second["thermal"])
+        self.assertEqual(first["fit"]["dynamic_fit"], second["fit"]["dynamic_fit"])
+
+    def test_failed_scheduled_candidate_falls_back_to_constant(self):
+        constant = json.loads(json.dumps(KNOWN_ARTIFACT))
+        constant["dynamic"] = json.loads(json.dumps(DEFAULT_DYNAMIC_PARAMETERS))
+        constant["thermal"] = json.loads(json.dumps(DEFAULT_THERMAL_PARAMETERS))
+        result = SimpleNamespace(success=True, cost=1.0)
+        with patch(
+            "fit_mpc_physics_predictor._fit_dynamic_candidate",
+            side_effect=[(constant, result), RuntimeError("forced scheduled failure")],
+        ):
+            artifact = fit_physics_dynamic(KNOWN_ARTIFACT, synthetic_dynamic_frame())
+        self.assertEqual(artifact["dynamic"]["time_constant_model"], "constant")
+        self.assertEqual(
+            artifact["fit"]["dynamic_fit"]["scheduled_candidate_status"], "failed"
+        )
+
+    def test_scheduled_model_requires_at_least_ten_percent_validation_improvement(self):
+        constant = json.loads(json.dumps(KNOWN_ARTIFACT))
+        constant["dynamic"] = json.loads(json.dumps(DEFAULT_DYNAMIC_PARAMETERS))
+        constant["thermal"] = json.loads(json.dumps(DEFAULT_THERMAL_PARAMETERS))
+        scheduled = json.loads(json.dumps(constant))
+        scheduled["dynamic"]["time_constant_model"] = "scheduled"
+        for name in (
+            "tau_comp_schedule_s",
+            "tau_pump_schedule_s",
+            "tau_cond_schedule_s",
+            "tau_evap_schedule_s",
+        ):
+            scheduled["dynamic"][name] = 1.0
+        optimizer = SimpleNamespace(success=True, cost=1.0)
+        for scheduled_metric, expected in ((0.91, "constant"), (0.90, "scheduled")):
+            with self.subTest(scheduled_metric=scheduled_metric):
+                with patch(
+                    "fit_mpc_physics_predictor._fit_dynamic_candidate",
+                    side_effect=[(constant, optimizer), (scheduled, optimizer)],
+                ), patch(
+                    "fit_mpc_physics_predictor._dynamic_validation_metric",
+                    side_effect=[1.0, scheduled_metric],
+                ):
+                    artifact = fit_physics_dynamic(
+                        KNOWN_ARTIFACT, synthetic_dynamic_frame()
+                    )
+                self.assertEqual(
+                    artifact["dynamic"]["time_constant_model"], expected
+                )
 
 
 class PhysicsCliTests(unittest.TestCase):

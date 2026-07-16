@@ -13,8 +13,13 @@ ensure_env_library_bin_on_path()
 from scipy.optimize import least_squares
 
 from mpc_physics_predictor import (
+    DEFAULT_DYNAMIC_PARAMETERS,
     DEFAULT_INPUT_DOMAIN,
+    DEFAULT_THERMAL_PARAMETERS,
+    SCHEDULE_PARAMETER_NAMES,
     evaluate_physics_capacity,
+    initialize_physics_state,
+    step_physics_predictor,
     validate_physics_artifact,
 )
 from mpc_predictor_selection import PHYSICS_P
@@ -45,6 +50,61 @@ FIT_COLUMNS = (
     "q_evap_ss_w",
 )
 FEATURE_COLUMNS = FIT_COLUMNS[:-1]
+
+DYNAMIC_NUMERIC_KEYS = tuple(
+    name for name in DEFAULT_DYNAMIC_PARAMETERS if name != "time_constant_model"
+)
+THERMAL_KEYS = tuple(DEFAULT_THERMAL_PARAMETERS)
+SCHEDULE_KEYS = tuple(sorted(SCHEDULE_PARAMETER_NAMES))
+DYNAMIC_LOWER = np.array(
+    [0.1, 0.1, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0]
+    + [2500.0, 0.05, 1600.0, 50000.0, 10000.0, 20.0, 1.0, 0.1],
+    dtype=float,
+)
+DYNAMIC_UPPER = np.array(
+    [30.0, 30.0, 60.0, 60.0, 200.0, 200.0, 60.0, 60.0]
+    + [4500.0, 0.8, 4800.0, 1000000.0, 500000.0, 2000.0, 100.0, 100.0],
+    dtype=float,
+)
+DYNAMIC_START = np.array(
+    [DEFAULT_DYNAMIC_PARAMETERS[name] for name in DYNAMIC_NUMERIC_KEYS]
+    + [DEFAULT_THERMAL_PARAMETERS[name] for name in THERMAL_KEYS],
+    dtype=float,
+)
+DYNAMIC_REQUIRED_COLUMNS = (
+    "scenario_id",
+    "split",
+    "time_s",
+    "dt_s",
+    "n_comp_cmd_rpm",
+    "n_pump_cmd_rpm",
+    "n_comp_eff_rpm",
+    "n_pump_eff_rpm",
+    "q_gen_w",
+    "t_ambient_c",
+    "q_cond_eff_w",
+    "q_evap_eff_w",
+    "t_supply_c",
+    "t_plate_c",
+    "t_return_c",
+    "t_batt_c",
+    "t_cool_c",
+)
+DYNAMIC_RESPONSE_FIELDS = (
+    ("n_comp_eff_rpm", "n_comp_eff_rpm", 500.0),
+    ("n_pump_eff_rpm", "n_pump_eff_rpm", 500.0),
+    ("q_cond_w", "q_cond_eff_w", 500.0),
+    ("q_evap_w", "q_evap_eff_w", 500.0),
+)
+HORIZON_FIELDS = (
+    ("q_evap_w", "q_evap_eff_w", 500.0),
+    ("t_supply_c", "t_supply_c", 1.0),
+    ("t_plate_c", "t_plate_c", 1.0),
+    ("t_return_c", "t_return_c", 1.0),
+    ("t_batt_c", "t_batt_c", 0.2),
+    ("t_cool_c", "t_cool_c", 0.5),
+)
+TRAINING_HORIZONS = (10, 20, 60)
 
 
 def _masked_parameters(parameters: np.ndarray, mask: tuple[bool, ...]) -> np.ndarray:
@@ -311,11 +371,201 @@ def fit_physics_predictor(
     return artifact
 
 
-def fit_physics_artifact(frame: pd.DataFrame) -> dict:
+def _dynamic_artifact(base_artifact: dict, parameters: np.ndarray, model: str) -> dict:
+    artifact = json.loads(json.dumps(base_artifact))
+    base_count = len(DYNAMIC_NUMERIC_KEYS) + len(THERMAL_KEYS)
+    if parameters.shape != (base_count + (len(SCHEDULE_KEYS) if model == "scheduled" else 0),):
+        raise ValueError("Dynamic parameter vector has the wrong length")
+    artifact["dynamic"] = {"time_constant_model": model}
+    for index, name in enumerate(DYNAMIC_NUMERIC_KEYS):
+        artifact["dynamic"][name] = float(parameters[index])
+    offset = len(DYNAMIC_NUMERIC_KEYS)
+    artifact["thermal"] = {
+        name: float(parameters[offset + index])
+        for index, name in enumerate(THERMAL_KEYS)
+    }
+    if model == "scheduled":
+        for index, name in enumerate(SCHEDULE_KEYS):
+            artifact["dynamic"][name] = float(parameters[base_count + index])
+    validate_physics_artifact(artifact)
+    return artifact
+
+
+def _validate_dynamic_subset(
+    frame: pd.DataFrame, expected_split: str, allow_empty: bool
+) -> None:
+    missing = [name for name in DYNAMIC_REQUIRED_COLUMNS if name not in frame.columns]
+    if missing:
+        raise ValueError(f"Missing dynamic fit columns: {missing}")
+    if not allow_empty and frame.empty:
+        raise ValueError(f"{expected_split} dynamic data must not be empty")
+    invalid = set(frame["split"].tolist()) - {expected_split}
+    if invalid:
+        raise ValueError(
+            f"{expected_split} dynamic data contains other splits: {sorted(map(str, invalid))}"
+        )
+    numeric_columns = [name for name in DYNAMIC_REQUIRED_COLUMNS if name not in {"scenario_id", "split"}]
+    try:
+        values = frame.loc[:, numeric_columns].to_numpy(dtype=float)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Dynamic fit columns must be numeric") from exc
+    if not np.isfinite(values).all():
+        raise ValueError("Dynamic fit columns must be finite")
+    if len(frame) and np.any(frame["dt_s"].to_numpy(dtype=float) <= 0.0):
+        raise ValueError("Dynamic dt_s must be greater than zero")
+
+
+def _initial_dynamic_state(row: pd.Series):
+    return initialize_physics_state(
+        row["n_comp_eff_rpm"],
+        row["n_pump_eff_rpm"],
+        row["q_cond_eff_w"],
+        row["q_evap_eff_w"],
+        row["t_supply_c"],
+        row["t_plate_c"],
+        row["t_return_c"],
+        row["t_batt_c"],
+        row["t_cool_c"],
+    )
+
+
+def _dynamic_errors(artifact: dict, frame: pd.DataFrame) -> np.ndarray:
+    errors = []
+    for _, scenario in frame.groupby("scenario_id", sort=True):
+        ordered = scenario.sort_values("time_s", kind="stable").reset_index(drop=True)
+        if len(ordered) < 2:
+            continue
+        state = _initial_dynamic_state(ordered.iloc[0])
+        for step_index in range(1, len(ordered)):
+            row = ordered.iloc[step_index]
+            state = step_physics_predictor(
+                state,
+                row["n_comp_cmd_rpm"],
+                row["n_pump_cmd_rpm"],
+                row["q_gen_w"],
+                row["t_ambient_c"],
+                row["dt_s"],
+                artifact,
+            )
+            for state_name, column, scale in DYNAMIC_RESPONSE_FIELDS:
+                errors.append((getattr(state, state_name) - float(row[column])) / scale)
+            if step_index in TRAINING_HORIZONS:
+                for state_name, column, scale in HORIZON_FIELDS:
+                    errors.append((getattr(state, state_name) - float(row[column])) / scale)
+    return np.asarray(errors, dtype=float)
+
+
+def _fit_dynamic_candidate(
+    base_artifact: dict, train: pd.DataFrame, model: str
+) -> tuple[dict, object]:
+    if model == "scheduled":
+        start = np.concatenate((DYNAMIC_START, np.zeros(len(SCHEDULE_KEYS))))
+        lower = np.concatenate((DYNAMIC_LOWER, np.full(len(SCHEDULE_KEYS), -100.0)))
+        upper = np.concatenate((DYNAMIC_UPPER, np.full(len(SCHEDULE_KEYS), 100.0)))
+    else:
+        start = DYNAMIC_START.copy()
+        lower = DYNAMIC_LOWER
+        upper = DYNAMIC_UPPER
+
+    def residual(parameters: np.ndarray) -> np.ndarray:
+        artifact = _dynamic_artifact(base_artifact, parameters, model)
+        dynamic_errors = _dynamic_errors(artifact, train)
+        regularization = 0.05 * (parameters - start) / np.maximum(upper - lower, 1e-9)
+        return np.concatenate((dynamic_errors, regularization))
+
+    result = least_squares(
+        residual,
+        start,
+        bounds=(lower, upper),
+        max_nfev=80,
+        tr_solver="lsmr",
+    )
+    parameters = np.asarray(result.x, dtype=float)
+    if (
+        not result.success
+        or parameters.shape != start.shape
+        or not np.isfinite(parameters).all()
+        or np.any(parameters < lower)
+        or np.any(parameters > upper)
+    ):
+        raise RuntimeError(f"Dynamic {model} fitting failed")
+    return _dynamic_artifact(base_artifact, parameters, model), result
+
+
+def _dynamic_validation_metric(artifact: dict, validation: pd.DataFrame) -> float | None:
+    if validation.empty:
+        return None
+    errors = _dynamic_errors(artifact, validation)
+    if not len(errors):
+        raise ValueError("Validation dynamic trajectories need at least two rows")
+    metric = float(np.mean(np.abs(errors)))
+    if not math.isfinite(metric):
+        raise RuntimeError("Dynamic validation metric is not finite")
+    return metric
+
+
+def fit_physics_dynamic(base_artifact: dict, dynamic_frame: pd.DataFrame) -> dict:
+    validate_physics_artifact(base_artifact)
+    validate_identification_frame(dynamic_frame)
+    train = dynamic_frame.loc[dynamic_frame["split"] == "train"].copy()
+    validation = dynamic_frame.loc[dynamic_frame["split"] == "validation"].copy()
+    _validate_dynamic_subset(train, "train", allow_empty=False)
+    _validate_dynamic_subset(validation, "validation", allow_empty=True)
+
+    constant, constant_result = _fit_dynamic_candidate(base_artifact, train, "constant")
+    constant_metric = _dynamic_validation_metric(constant, validation)
+    selected = constant
+    selected_result = constant_result
+    scheduled_metric = None
+    improvement = None
+    scheduled_status = "not_attempted"
+    if not validation.empty:
+        try:
+            scheduled, scheduled_result = _fit_dynamic_candidate(
+                base_artifact, train, "scheduled"
+            )
+        except RuntimeError:
+            scheduled_status = "failed"
+        else:
+            scheduled_status = "valid"
+            scheduled_metric = _dynamic_validation_metric(scheduled, validation)
+            if constant_metric == 0.0:
+                improvement = 0.0
+            else:
+                improvement = (constant_metric - scheduled_metric) / constant_metric
+            if scheduled_metric <= 0.90 * constant_metric:
+                selected = scheduled
+                selected_result = scheduled_result
+
+    selected.setdefault("fit", {})["dynamic_fit"] = {
+        "fit_status": "validated" if not validation.empty else "mechanical_smoke_unvalidated",
+        "selection_source": "validation_only" if not validation.empty else "fixed_constant_no_validation",
+        "selected_time_constant_model": selected["dynamic"]["time_constant_model"],
+        "scheduled_minimum_improvement": 0.10,
+        "scheduled_improvement": improvement,
+        "constant_validation_weighted_mae": constant_metric,
+        "scheduled_validation_weighted_mae": scheduled_metric,
+        "scheduled_candidate_status": scheduled_status,
+        "training_horizons_steps": list(TRAINING_HORIZONS),
+        "train_scenarios": int(train["scenario_id"].nunique()),
+        "validation_scenarios": int(validation["scenario_id"].nunique()),
+        "optimizer": {
+            "success": bool(selected_result.success),
+            "cost": float(selected_result.cost),
+        },
+    }
+    validate_physics_artifact(selected)
+    return selected
+
+
+def fit_physics_artifact(frame: pd.DataFrame, dynamic_frame: pd.DataFrame | None = None) -> dict:
     validate_identification_frame(frame)
     train_frame = frame.loc[frame["split"] == "train"].copy()
     validation_frame = frame.loc[frame["split"] == "validation"].copy()
-    return fit_physics_predictor(train_frame, validation_frame)
+    artifact = fit_physics_predictor(train_frame, validation_frame)
+    if dynamic_frame is not None:
+        artifact = fit_physics_dynamic(artifact, dynamic_frame)
+    return artifact
 
 
 def _validate_output_path(path: str | Path) -> Path:
@@ -327,13 +577,19 @@ def _validate_output_path(path: str | Path) -> Path:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Fit the steady physics-P capacity layer")
+    parser = argparse.ArgumentParser(description="Fit the layered physics-P predictor")
     parser.add_argument("--steady-csv", required=True)
+    parser.add_argument("--dynamic-csv")
     parser.add_argument("--output", required=True)
     arguments = parser.parse_args()
 
     frame = pd.read_csv(arguments.steady_csv, encoding="utf-8")
-    artifact = fit_physics_artifact(frame)
+    dynamic_frame = (
+        pd.read_csv(arguments.dynamic_csv, encoding="utf-8")
+        if arguments.dynamic_csv
+        else None
+    )
+    artifact = fit_physics_artifact(frame, dynamic_frame=dynamic_frame)
     output_path = _validate_output_path(arguments.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(
@@ -344,6 +600,11 @@ def main() -> None:
         f"train_rows={artifact['fit']['train_rows']} "
         f"validation_rows={artifact['fit']['validation_rows']}"
     )
+    if "dynamic_fit" in artifact["fit"]:
+        print(
+            "dynamic_model="
+            f"{artifact['fit']['dynamic_fit']['selected_time_constant_model']}"
+        )
     print(f"artifact={output_path}")
 
 
