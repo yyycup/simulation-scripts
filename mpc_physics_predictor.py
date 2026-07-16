@@ -11,6 +11,14 @@ from mpc_predictor_selection import (
 )
 
 
+DEFAULT_INPUT_DOMAIN = {
+    "n_comp_rpm": [1000.0, 6000.0],
+    "n_pump_rpm": [1600.0, 4800.0],
+    "t_cool_c": [20.0, 35.0],
+    "t_ambient_c": [20.0, 40.0],
+}
+
+
 DEFAULT_PHYSICS_ARTIFACT = {
     "model_type": PHYSICS_P,
     "schema_version": 1,
@@ -20,6 +28,7 @@ DEFAULT_PHYSICS_ARTIFACT = {
         "n_pump_ref_rpm": 2000.0,
         "q_upper_w": 4800.0,
     },
+    "input_domain": DEFAULT_INPUT_DOMAIN,
 }
 
 
@@ -119,17 +128,40 @@ def validate_physics_artifact(artifact: object) -> dict:
             raise ValueError("capacity.n_pump_ref_rpm must be greater than zero")
         if q_upper <= 0.0:
             raise ValueError("capacity.q_upper_w must be greater than zero")
+
+        input_domain = artifact.get("input_domain", DEFAULT_INPUT_DOMAIN)
+        if not isinstance(input_domain, dict):
+            raise ValueError("input_domain must be an object")
+        if set(input_domain) != set(DEFAULT_INPUT_DOMAIN):
+            raise ValueError(
+                "input_domain must contain exactly n_comp_rpm, n_pump_rpm, "
+                "t_cool_c, and t_ambient_c"
+            )
+        for name, limits in input_domain.items():
+            if not isinstance(limits, (list, tuple)) or len(limits) != 2:
+                raise ValueError(f"input_domain.{name} must be [min, max]")
+            lower = _finite_number(limits[0], f"input_domain.{name}[0]")
+            upper = _finite_number(limits[1], f"input_domain.{name}[1]")
+            if lower >= upper:
+                raise ValueError(f"input_domain.{name} must satisfy min < max")
     except (TypeError, ValueError) as exc:
         raise PhysicsArtifactError(str(exc)) from exc
     return artifact
 
 
-def load_physics_artifact(path: str | Path) -> dict:
+def load_physics_artifact(path: str | Path, require_validated: bool = False) -> dict:
     try:
         artifact = load_predictor_artifact(path, expected_type=PHYSICS_P)
     except PredictorArtifactError as exc:
         raise PhysicsArtifactError(str(exc)) from exc
-    return validate_physics_artifact(artifact)
+    validated = validate_physics_artifact(artifact)
+    if require_validated:
+        fit = validated.get("fit")
+        if not isinstance(fit, dict) or fit.get("fit_status") != "validated":
+            raise PhysicsArtifactError(
+                "Physics artifact must have fit.fit_status == 'validated'"
+            )
+    return validated
 
 
 def evaluate_physics_capacity(
@@ -143,19 +175,32 @@ def evaluate_physics_capacity(
     validate_physics_artifact(selected)
     gate = selected["gate"]
     capacity = selected["capacity"]
+    domain = selected.get("input_domain", DEFAULT_INPUT_DOMAIN)
+    raw_inputs = {
+        "n_comp_rpm": n_comp_rpm,
+        "n_pump_rpm": n_pump_rpm,
+        "t_cool_c": t_cool_c,
+        "t_ambient_c": t_ambient_c,
+    }
+    clipped = {}
+    for name, value in raw_inputs.items():
+        finite = _finite_number(value, name)
+        lower, upper = domain[name]
+        clipped[name] = max(float(lower), min(float(upper), finite))
     gate_value = smooth_gate(
-        n_comp_rpm,
+        clipped["n_comp_rpm"],
         gate["n_on_rpm"],
         gate["width_rpm"],
     )
     active = active_capacity_w(
         capacity["coefficients"],
-        n_comp_rpm,
-        n_pump_rpm,
-        t_cool_c,
-        t_ambient_c,
+        clipped["n_comp_rpm"],
+        clipped["n_pump_rpm"],
+        clipped["t_cool_c"],
+        clipped["t_ambient_c"],
         capacity["n_pump_ref_rpm"],
     )
-    raw = _finite_number(gate_value * active, "physics capacity result")
     q_upper = _finite_number(capacity["q_upper_w"], "capacity.q_upper_w")
+    clipped_active = max(0.0, min(q_upper, active))
+    raw = _finite_number(gate_value * clipped_active, "physics capacity result")
     return max(0.0, min(q_upper, raw))

@@ -13,6 +13,7 @@ ensure_env_library_bin_on_path()
 from scipy.optimize import least_squares
 
 from mpc_physics_predictor import (
+    DEFAULT_INPUT_DOMAIN,
     evaluate_physics_capacity,
     validate_physics_artifact,
 )
@@ -22,7 +23,18 @@ from predictor_identification_data import validate_identification_frame
 
 LOWER = np.array([1900, 10, -2, -2, -2, -2, -2, -2], dtype=float)
 UPPER = np.array([2000, 80, 2, 2, 2, 2, 2, 2], dtype=float)
-INITIAL = np.array([1950, 25, 0.6, -0.1, 0, 0, 0, 0], dtype=float)
+STARTS = (
+    np.array([1925, 15, 0.6, -0.1, 0, 0, 0, 0], dtype=float),
+    np.array([1950, 25, 0.6, -0.1, 0, 0, 0, 0], dtype=float),
+    np.array([1975, 50, 0.6, -0.1, 0, 0, 0, 0], dtype=float),
+)
+FEATURE_CANDIDATES = (
+    ("base", (True, True, True, True, False, False)),
+    ("base_plus_c4", (True, True, True, True, True, False)),
+    ("base_plus_c5", (True, True, True, True, False, True)),
+    ("full", (True, True, True, True, True, True)),
+)
+RIDGE_CANDIDATES = (1e-6, 1e-4, 1e-2)
 N_PUMP_REF_RPM = 2000.0
 Q_UPPER_W = 4800.0
 FIT_COLUMNS = (
@@ -32,6 +44,13 @@ FIT_COLUMNS = (
     "t_ambient_c",
     "q_evap_ss_w",
 )
+FEATURE_COLUMNS = FIT_COLUMNS[:-1]
+
+
+def _masked_parameters(parameters: np.ndarray, mask: tuple[bool, ...]) -> np.ndarray:
+    masked = np.asarray(parameters, dtype=float).copy()
+    masked[2:] *= np.asarray(mask, dtype=float)
+    return masked
 
 
 def _artifact_from_parameters(parameters: np.ndarray) -> dict:
@@ -47,6 +66,7 @@ def _artifact_from_parameters(parameters: np.ndarray) -> dict:
             "n_pump_ref_rpm": N_PUMP_REF_RPM,
             "q_upper_w": Q_UPPER_W,
         },
+        "input_domain": {name: list(limits) for name, limits in DEFAULT_INPUT_DOMAIN.items()},
     }
     validate_physics_artifact(artifact)
     return artifact
@@ -79,32 +99,25 @@ def _predict(parameters: np.ndarray, features: np.ndarray) -> np.ndarray:
     artifact = _artifact_from_parameters(parameters)
     return np.asarray(
         [
-            evaluate_physics_capacity(
-                n_comp,
-                n_pump,
-                t_cool,
-                t_ambient,
-                artifact=artifact,
-            )
-            for n_comp, n_pump, t_cool, t_ambient in features
+            evaluate_physics_capacity(*feature, artifact=artifact)
+            for feature in features
         ],
         dtype=float,
     )
 
 
-def _monotonic_contexts(validation: pd.DataFrame) -> np.ndarray:
+def _constraint_contexts(validation: pd.DataFrame) -> np.ndarray:
     if validation.empty:
-        return np.empty((0, 3), dtype=float)
+        return np.array([[2000.0, 27.5, 30.0]], dtype=float)
     return validation.loc[
         :, ["n_pump_eff_rpm", "t_cool_c", "t_ambient_c"]
     ].drop_duplicates().to_numpy(dtype=float)
 
 
-def _monotonic_violations(parameters: np.ndarray, contexts: np.ndarray) -> np.ndarray:
-    if len(contexts) == 0:
-        return np.empty(0, dtype=float)
-    speeds = np.linspace(2000.0, 6000.0, 17)
-    violations = []
+def _grid_predictions(
+    parameters: np.ndarray, contexts: np.ndarray, speeds: np.ndarray
+) -> np.ndarray:
+    predictions = []
     for n_pump, t_cool, t_ambient in contexts:
         features = np.column_stack(
             (
@@ -114,9 +127,90 @@ def _monotonic_violations(parameters: np.ndarray, contexts: np.ndarray) -> np.nd
                 np.full_like(speeds, t_ambient),
             )
         )
-        differences = np.diff(_predict(parameters, features))
-        violations.extend(np.maximum(0.0, -differences))
-    return np.asarray(violations, dtype=float)
+        predictions.append(_predict(parameters, features))
+    return np.asarray(predictions, dtype=float)
+
+
+def _physical_checks(parameters: np.ndarray, contexts: np.ndarray) -> tuple[float, float]:
+    low_speed = _grid_predictions(
+        parameters, contexts, np.array([1000.0, 1400.0, 1800.0])
+    )
+    active = _grid_predictions(parameters, contexts, np.linspace(2000.0, 6000.0, 17))
+    return float(np.max(low_speed)), float(np.min(np.diff(active, axis=1)))
+
+
+def _candidate(
+    train_features: np.ndarray,
+    train_targets: np.ndarray,
+    contexts: np.ndarray,
+    mask: tuple[bool, ...],
+    ridge: float,
+    start: np.ndarray,
+) -> tuple[object, np.ndarray] | None:
+    mask_array = np.asarray(mask, dtype=float)
+
+    def residual(parameters: np.ndarray) -> np.ndarray:
+        masked = _masked_parameters(parameters, mask)
+        train_errors = _predict(masked, train_features) - train_targets
+        low_speed = _grid_predictions(
+            masked, contexts, np.array([1000.0, 1400.0, 1800.0])
+        )
+        active = _grid_predictions(
+            masked, contexts, np.linspace(2000.0, 6000.0, 17)
+        )
+        low_speed_penalty = np.maximum(0.0, low_speed.ravel() - 25.0)
+        monotonic_penalty = np.maximum(0.0, -np.diff(active, axis=1).ravel())
+        regularization = math.sqrt(ridge) * masked[2:] * mask_array
+        return np.concatenate(
+            (
+                train_errors,
+                10.0 * low_speed_penalty,
+                10.0 * monotonic_penalty,
+                regularization,
+            )
+        )
+
+    try:
+        result = least_squares(
+            residual,
+            start.copy(),
+            bounds=(LOWER, UPPER),
+            tr_solver="lsmr",
+        )
+    except (ValueError, RuntimeError, FloatingPointError):
+        return None
+    parameters = np.asarray(result.x, dtype=float)
+    if (
+        not result.success
+        or parameters.shape != LOWER.shape
+        or not np.isfinite(parameters).all()
+        or np.any(parameters < LOWER)
+        or np.any(parameters > UPPER)
+    ):
+        return None
+    parameters = _masked_parameters(parameters, mask)
+    max_low_speed, min_active_slope = _physical_checks(parameters, contexts)
+    if (
+        not math.isfinite(max_low_speed)
+        or not math.isfinite(min_active_slope)
+        or max_low_speed > 25.0 + 1e-7
+        or min_active_slope < -1e-7
+    ):
+        return None
+    return result, parameters
+
+
+def _validation_metrics(parameters: np.ndarray, validation: pd.DataFrame) -> dict:
+    features = validation.loc[:, FEATURE_COLUMNS].to_numpy(dtype=float)
+    targets = validation["q_evap_ss_w"].to_numpy(dtype=float)
+    errors = _predict(parameters, features) - targets
+    metrics = {
+        "mae_w": float(np.mean(np.abs(errors))),
+        "rmse_w": float(np.sqrt(np.mean(np.square(errors)))),
+    }
+    if not all(math.isfinite(value) for value in metrics.values()):
+        raise RuntimeError("Validation metrics are not finite")
+    return metrics
 
 
 def fit_physics_predictor(
@@ -124,72 +218,94 @@ def fit_physics_predictor(
 ) -> dict:
     _validate_fit_subset(train_frame, "train", allow_empty=False)
     _validate_fit_subset(validation_frame, "validation", allow_empty=True)
-
-    train_features = train_frame.loc[
-        :, ["n_comp_eff_rpm", "n_pump_eff_rpm", "t_cool_c", "t_ambient_c"]
-    ].to_numpy(dtype=float)
+    train_features = train_frame.loc[:, FEATURE_COLUMNS].to_numpy(dtype=float)
     train_targets = train_frame["q_evap_ss_w"].to_numpy(dtype=float)
-    contexts = _monotonic_contexts(validation_frame)
+    contexts = _constraint_contexts(validation_frame)
 
-    def residual(parameters: np.ndarray) -> np.ndarray:
-        predictions = _predict(parameters, train_features)
-        low_speed_excess = np.maximum(
-            0.0,
-            predictions[train_features[:, 0] < 2000.0] - 25.0,
+    configurations = []
+    if validation_frame.empty:
+        configurations.append((FEATURE_CANDIDATES[0], RIDGE_CANDIDATES[1], 1))
+    else:
+        for feature_candidate in FEATURE_CANDIDATES:
+            for ridge in RIDGE_CANDIDATES:
+                for start_index in range(len(STARTS)):
+                    configurations.append((feature_candidate, ridge, start_index))
+
+    candidates = []
+    for (feature_name, mask), ridge, start_index in configurations:
+        fitted = _candidate(
+            train_features,
+            train_targets,
+            contexts,
+            mask,
+            ridge,
+            STARTS[start_index],
         )
-        monotonic_penalty = _monotonic_violations(parameters, contexts)
-        return np.concatenate(
-            (
-                predictions - train_targets,
-                10.0 * low_speed_excess,
-                10.0 * monotonic_penalty,
+        if fitted is None:
+            continue
+        result, parameters = fitted
+        metrics = None
+        if not validation_frame.empty:
+            metrics = _validation_metrics(parameters, validation_frame)
+        max_low_speed, min_active_slope = _physical_checks(parameters, contexts)
+        candidates.append(
+            {
+                "feature_name": feature_name,
+                "mask": mask,
+                "ridge": ridge,
+                "start_index": start_index,
+                "result": result,
+                "parameters": parameters,
+                "metrics": metrics,
+                "max_low_speed_w": max_low_speed,
+                "min_active_slope_w_per_step": min_active_slope,
+            }
+        )
+    if not candidates:
+        raise RuntimeError("Physics capacity fitting failed: all candidates failed")
+
+    if validation_frame.empty:
+        selected = candidates[0]
+    else:
+        selected = None
+        for feature_name, _ in FEATURE_CANDIDATES:
+            same_features = [c for c in candidates if c["feature_name"] == feature_name]
+            if not same_features:
+                continue
+            best = min(
+                same_features,
+                key=lambda c: (c["metrics"]["mae_w"], c["ridge"], c["start_index"]),
             )
-        )
+            if selected is None or best["metrics"]["mae_w"] < selected["metrics"]["mae_w"] - 1e-9:
+                selected = best
+        if selected is None:
+            raise RuntimeError("Physics capacity fitting failed: all candidates failed")
 
-    result = least_squares(
-        residual,
-        INITIAL.copy(),
-        bounds=(LOWER, UPPER),
-        tr_solver="lsmr",
-    )
-    if not result.success:
-        raise RuntimeError(f"Physics capacity optimizer failed: {result.message}")
-    parameters = np.asarray(result.x, dtype=float)
-    if not np.isfinite(parameters).all():
-        raise RuntimeError("Physics capacity optimizer returned non-finite parameters")
-    if np.any(parameters < LOWER) or np.any(parameters > UPPER):
-        raise RuntimeError("Physics capacity optimizer returned parameters outside bounds")
-
+    parameters = selected["parameters"]
     artifact = _artifact_from_parameters(parameters)
-    monotonic_check_contexts = contexts
-    if len(monotonic_check_contexts) == 0:
-        monotonic_check_contexts = np.array([[2000.0, 27.5, 30.0]], dtype=float)
-    if np.any(_monotonic_violations(parameters, monotonic_check_contexts) > 1e-7):
-        raise RuntimeError("Fitted physics capacity is not monotonic on the validation grid")
-
     validation_available = not validation_frame.empty
-    validation_metrics = None
-    if validation_available:
-        validation_features = validation_frame.loc[
-            :, ["n_comp_eff_rpm", "n_pump_eff_rpm", "t_cool_c", "t_ambient_c"]
-        ].to_numpy(dtype=float)
-        validation_targets = validation_frame["q_evap_ss_w"].to_numpy(dtype=float)
-        validation_errors = _predict(parameters, validation_features) - validation_targets
-        validation_metrics = {
-            "mae_w": float(np.mean(np.abs(validation_errors))),
-            "rmse_w": float(np.sqrt(np.mean(np.square(validation_errors)))),
-        }
-        if not all(math.isfinite(value) for value in validation_metrics.values()):
-            raise RuntimeError("Validation metrics are not finite")
-
     artifact["fit"] = {
+        "fit_status": "validated" if validation_available else "mechanical_smoke_unvalidated",
+        "selection_method": (
+            "validation_mae_strict_complexity"
+            if validation_available
+            else "fixed_mechanical_no_validation"
+        ),
+        "selection_metric": "validation_mae_w" if validation_available else None,
         "train_rows": int(len(train_frame)),
         "validation_rows": int(len(validation_frame)),
         "validation_available": validation_available,
-        "validation_metrics": validation_metrics,
+        "validation_metrics": selected["metrics"],
+        "selected_features": selected["feature_name"],
+        "selected_mask": list(selected["mask"]),
+        "ridge": selected["ridge"],
+        "start_index": selected["start_index"],
+        "candidate_count": len(candidates),
+        "max_low_speed_w": selected["max_low_speed_w"],
+        "min_active_slope_w_per_step": selected["min_active_slope_w_per_step"],
         "optimizer": {
-            "success": bool(result.success),
-            "cost": float(result.cost),
+            "success": bool(selected["result"].success),
+            "cost": float(selected["result"].cost),
         },
     }
     return artifact
@@ -202,6 +318,14 @@ def fit_physics_artifact(frame: pd.DataFrame) -> dict:
     return fit_physics_predictor(train_frame, validation_frame)
 
 
+def _validate_output_path(path: str | Path) -> Path:
+    resolved = Path(path).resolve()
+    model_data = (Path(__file__).resolve().parent / "model_data").resolve()
+    if resolved == model_data or model_data in resolved.parents:
+        raise ValueError("Fitted artifacts must not be written directly into model_data")
+    return resolved
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Fit the steady physics-P capacity layer")
     parser.add_argument("--steady-csv", required=True)
@@ -210,7 +334,7 @@ def main() -> None:
 
     frame = pd.read_csv(arguments.steady_csv, encoding="utf-8")
     artifact = fit_physics_artifact(frame)
-    output_path = Path(arguments.output)
+    output_path = _validate_output_path(arguments.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(
         json.dumps(artifact, ensure_ascii=False, indent=2),
