@@ -635,6 +635,48 @@ class PhysicsFitTests(unittest.TestCase):
             artifact["fit"]["dynamic_fit"]["scheduled_candidate_status"], "failed"
         )
 
+    def test_numeric_scheduled_candidate_failure_falls_back_to_constant(self):
+        constant = json.loads(json.dumps(KNOWN_ARTIFACT))
+        constant["dynamic"] = json.loads(json.dumps(DEFAULT_DYNAMIC_PARAMETERS))
+        constant["thermal"] = json.loads(json.dumps(DEFAULT_THERMAL_PARAMETERS))
+        result = SimpleNamespace(success=True, cost=1.0)
+        for error in (ValueError("invalid candidate"), FloatingPointError("non-finite")):
+            with self.subTest(error=type(error).__name__):
+                with patch(
+                    "fit_mpc_physics_predictor._fit_dynamic_candidate",
+                    side_effect=[(constant, result), error],
+                ):
+                    artifact = fit_physics_dynamic(
+                        KNOWN_ARTIFACT, synthetic_dynamic_frame()
+                    )
+                self.assertEqual(
+                    artifact["dynamic"]["time_constant_model"], "constant"
+                )
+                self.assertEqual(
+                    artifact["fit"]["dynamic_fit"]["scheduled_candidate_status"],
+                    "failed",
+                )
+
+    def test_zero_validation_error_does_not_select_unimproved_scheduled_model(self):
+        constant = json.loads(json.dumps(KNOWN_ARTIFACT))
+        constant["dynamic"] = json.loads(json.dumps(DEFAULT_DYNAMIC_PARAMETERS))
+        constant["thermal"] = json.loads(json.dumps(DEFAULT_THERMAL_PARAMETERS))
+        scheduled = json.loads(json.dumps(constant))
+        scheduled["dynamic"]["time_constant_model"] = "scheduled"
+        optimizer = SimpleNamespace(success=True, cost=1.0)
+        with patch(
+            "fit_mpc_physics_predictor._fit_dynamic_candidate",
+            side_effect=[(constant, optimizer), (scheduled, optimizer)],
+        ), patch(
+            "fit_mpc_physics_predictor._dynamic_validation_metric",
+            side_effect=[0.0, 0.0],
+        ):
+            artifact = fit_physics_dynamic(KNOWN_ARTIFACT, synthetic_dynamic_frame())
+        self.assertEqual(artifact["dynamic"]["time_constant_model"], "constant")
+        self.assertEqual(
+            artifact["fit"]["dynamic_fit"]["scheduled_improvement"], 0.0
+        )
+
     def test_scheduled_model_requires_at_least_ten_percent_validation_improvement(self):
         constant = json.loads(json.dumps(KNOWN_ARTIFACT))
         constant["dynamic"] = json.loads(json.dumps(DEFAULT_DYNAMIC_PARAMETERS))
