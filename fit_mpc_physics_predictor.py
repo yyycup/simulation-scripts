@@ -524,11 +524,11 @@ def fit_physics_dynamic(base_artifact: dict, dynamic_frame: pd.DataFrame) -> dic
             scheduled, scheduled_result = _fit_dynamic_candidate(
                 base_artifact, train, "scheduled"
             )
+            scheduled_metric = _dynamic_validation_metric(scheduled, validation)
         except (ValueError, RuntimeError, FloatingPointError):
             scheduled_status = "failed"
         else:
             scheduled_status = "valid"
-            scheduled_metric = _dynamic_validation_metric(scheduled, validation)
             if constant_metric == 0.0:
                 improvement = 0.0
             else:

@@ -657,6 +657,26 @@ class PhysicsFitTests(unittest.TestCase):
                     "failed",
                 )
 
+    def test_scheduled_validation_metric_failure_falls_back_to_constant(self):
+        constant = json.loads(json.dumps(KNOWN_ARTIFACT))
+        constant["dynamic"] = json.loads(json.dumps(DEFAULT_DYNAMIC_PARAMETERS))
+        constant["thermal"] = json.loads(json.dumps(DEFAULT_THERMAL_PARAMETERS))
+        scheduled = json.loads(json.dumps(constant))
+        scheduled["dynamic"]["time_constant_model"] = "scheduled"
+        optimizer = SimpleNamespace(success=True, cost=1.0)
+        with patch(
+            "fit_mpc_physics_predictor._fit_dynamic_candidate",
+            side_effect=[(constant, optimizer), (scheduled, optimizer)],
+        ), patch(
+            "fit_mpc_physics_predictor._dynamic_validation_metric",
+            side_effect=[1.0, RuntimeError("non-finite validation metric")],
+        ):
+            artifact = fit_physics_dynamic(KNOWN_ARTIFACT, synthetic_dynamic_frame())
+        self.assertEqual(artifact["dynamic"]["time_constant_model"], "constant")
+        self.assertEqual(
+            artifact["fit"]["dynamic_fit"]["scheduled_candidate_status"], "failed"
+        )
+
     def test_zero_validation_error_does_not_select_unimproved_scheduled_model(self):
         constant = json.loads(json.dumps(KNOWN_ARTIFACT))
         constant["dynamic"] = json.loads(json.dumps(DEFAULT_DYNAMIC_PARAMETERS))
