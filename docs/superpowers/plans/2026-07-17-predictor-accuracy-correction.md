@@ -398,7 +398,7 @@ Expected: 全部通过。
   --output-root outputs/mpc_predictor_accuracy_correction_v1/data
 ```
 
-Expected: 稳态网格包含1000–6000 rpm边界；动态数据包含15个场景，train/validation/test均覆盖三种激励类型和正反流向。
+Expected: 稳态网格轴为12档压缩机转速、5档泵速、冷却液温度`15/17.5/20/25/30/35 °C`和环境温度`20/25/30/35/40 °C`，共`12×5×6×5=1800`行，确定性split为train/validation/test=`1080/360/360`；动态数据包含15个场景，train/validation/test均覆盖三种激励类型和正反流向。
 
 - [ ] **Step 3: 验证数据边界和哈希**
 

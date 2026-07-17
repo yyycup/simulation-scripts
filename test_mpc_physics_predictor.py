@@ -133,6 +133,41 @@ def synthetic_dynamic_frame():
 
 
 class PhysicsCapacityTests(unittest.TestCase):
+    def test_default_domain_evaluates_15c_without_clipping_to_20c(self):
+        self.assertEqual(DEFAULT_INPUT_DOMAIN["t_cool_c"], [15.0, 35.0])
+        implicit = evaluate_physics_capacity(
+            3000.0, 2400.0, 15.0, 30.0, artifact=KNOWN_ARTIFACT
+        )
+        explicit_artifact = json.loads(json.dumps(KNOWN_ARTIFACT))
+        explicit_artifact["input_domain"] = json.loads(
+            json.dumps(DEFAULT_INPUT_DOMAIN)
+        )
+        explicit = evaluate_physics_capacity(
+            3000.0, 2400.0, 15.0, 30.0, artifact=explicit_artifact
+        )
+        at_20c = evaluate_physics_capacity(
+            3000.0, 2400.0, 20.0, 30.0, artifact=KNOWN_ARTIFACT
+        )
+
+        self.assertEqual(implicit, explicit)
+        self.assertNotEqual(implicit, at_20c)
+
+    def test_explicit_legacy_domain_still_clips_15c_to_20c(self):
+        legacy_artifact = json.loads(json.dumps(KNOWN_ARTIFACT))
+        legacy_artifact["input_domain"] = {
+            **json.loads(json.dumps(DEFAULT_INPUT_DOMAIN)),
+            "t_cool_c": [20.0, 35.0],
+        }
+
+        self.assertEqual(
+            evaluate_physics_capacity(
+                3000.0, 2400.0, 15.0, 30.0, artifact=legacy_artifact
+            ),
+            evaluate_physics_capacity(
+                3000.0, 2400.0, 20.0, 30.0, artifact=legacy_artifact
+            ),
+        )
+
     def test_gate_is_applied_after_active_capacity_is_clipped(self):
         artifact = json.loads(json.dumps(KNOWN_ARTIFACT))
         artifact["capacity"]["coefficients"] = [2.0, 2.0, 2.0, 2.0, 2.0, 2.0]
@@ -145,7 +180,7 @@ class PhysicsCapacityTests(unittest.TestCase):
         boundaries = {
             "n_comp_rpm": (1000.0, 6000.0),
             "n_pump_rpm": (1600.0, 4800.0),
-            "t_cool_c": (20.0, 35.0),
+            "t_cool_c": (15.0, 35.0),
             "t_ambient_c": (20.0, 40.0),
         }
         base = dict(

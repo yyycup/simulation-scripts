@@ -16,7 +16,7 @@ from mpc_predictor_selection import (
 DEFAULT_INPUT_DOMAIN = {
     "n_comp_rpm": [1000.0, 6000.0],
     "n_pump_rpm": [1600.0, 4800.0],
-    "t_cool_c": [20.0, 35.0],
+    "t_cool_c": [15.0, 35.0],
     "t_ambient_c": [20.0, 40.0],
 }
 

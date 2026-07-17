@@ -62,10 +62,27 @@ class GeneratePredictorIdentificationDataTest(unittest.TestCase):
             "T_cond_sat": 320.15,
         }
 
-    def test_full_grid_has_1200_unique_points(self):
+    def test_full_grid_has_expected_axes_and_1800_unique_points(self):
         grid = build_steady_grid(mode="full")
 
-        self.assertEqual(len(grid), 12 * 5 * 4 * 5)
+        self.assertEqual(
+            tuple(sorted({point[0] for point in grid})),
+            (1000.0, 1400.0, 1800.0, 1900.0, 1950.0, 1999.0, 2000.0,
+             2200.0, 3000.0, 4000.0, 5000.0, 6000.0),
+        )
+        self.assertEqual(
+            tuple(sorted({point[1] for point in grid})),
+            (1600.0, 2400.0, 3200.0, 4000.0, 4800.0),
+        )
+        self.assertEqual(
+            tuple(sorted({point[2] for point in grid})),
+            (15.0, 17.5, 20.0, 25.0, 30.0, 35.0),
+        )
+        self.assertEqual(
+            tuple(sorted({point[3] for point in grid})),
+            (20.0, 25.0, 30.0, 35.0, 40.0),
+        )
+        self.assertEqual(len(grid), 12 * 5 * 6 * 5)
         self.assertEqual(len(set(grid)), len(grid))
 
     def test_smoke_grid_preserves_the_compressor_boundary(self):
