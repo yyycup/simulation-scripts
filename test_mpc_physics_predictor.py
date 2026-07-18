@@ -11,12 +11,15 @@ import pandas as pd
 
 from fit_mpc_physics_predictor import (
     DYNAMIC_RESPONSE_FIELDS,
+    PLATE_REFINEMENT_KEYS,
     _artifact_from_parameters,
+    _plate_refinement_artifact,
     _predict,
     _validate_output_path,
     fit_physics_artifact,
     fit_physics_dynamic,
     fit_physics_predictor,
+    refine_physics_plate,
 )
 from mpc_physics_predictor import (
     DEFAULT_INPUT_DOMAIN,
@@ -382,6 +385,52 @@ class PhysicsDynamicTests(unittest.TestCase):
         self.assertGreater(result.t_plate_c, state.t_plate_c)
         self.assertLess(result.t_batt_c, state.t_batt_c)
 
+    def test_lower_plate_fluid_effectiveness_keeps_cold_plate_warmer(self):
+        artifact = self.dynamic_artifact()
+        artifact["dynamic"]["supply_delay_s"] = 0.0
+        state = initialize_physics_state(
+            n_comp_eff_rpm=1000.0,
+            n_pump_eff_rpm=2000.0,
+            q_cond_w=0.0,
+            q_evap_w=0.0,
+            t_supply_c=25.0,
+            t_plate_c=30.0,
+            t_return_c=27.0,
+            t_batt_c=35.0,
+            t_cool_c=25.0,
+        )
+
+        full_effectiveness = step_physics_predictor(
+            state, 1000.0, 2000.0, 0.0, 35.0, 5.0, artifact
+        )
+        reduced = json.loads(json.dumps(artifact))
+        reduced["thermal"]["plate_fluid_effectiveness"] = 0.5
+        reduced_effectiveness = step_physics_predictor(
+            state, 1000.0, 2000.0, 0.0, 35.0, 5.0, reduced
+        )
+
+        self.assertGreater(
+            reduced_effectiveness.t_plate_c,
+            full_effectiveness.t_plate_c,
+        )
+
+    def test_legacy_dynamic_artifact_defaults_plate_fluid_effectiveness_to_one(self):
+        explicit = self.dynamic_artifact()
+        legacy = json.loads(json.dumps(explicit))
+        legacy["thermal"].pop("plate_fluid_effectiveness")
+        state = initialize_physics_state(
+            2200.0, 2400.0, 200.0, 100.0, 28.0, 29.0, 29.5, 31.0, 28.5
+        )
+
+        explicit_result = step_physics_predictor(
+            state, 5000.0, 4000.0, 700.0, 35.0, 5.0, explicit
+        )
+        legacy_result = step_physics_predictor(
+            state, 5000.0, 4000.0, 700.0, 35.0, 5.0, legacy
+        )
+
+        self.assertEqual(explicit_result, legacy_result)
+
     def test_more_cooling_lowers_supply_temperature(self):
         artifact = self.dynamic_artifact()
         artifact["dynamic"]["supply_delay_s"] = 0.0
@@ -450,8 +499,13 @@ class PhysicsDynamicTests(unittest.TestCase):
                 if not isinstance(value, (int, float)):
                     continue
                 changed = json.loads(json.dumps(artifact))
-                increment = 5.1 if name.endswith("delay_s") else max(0.1, 0.1 * value)
-                changed[group][name] = value + increment
+                if name == "plate_fluid_effectiveness":
+                    changed[group][name] = 0.5 * value
+                else:
+                    increment = (
+                        5.1 if name.endswith("delay_s") else max(0.1, 0.1 * value)
+                    )
+                    changed[group][name] = value + increment
                 with self.subTest(group=group, name=name):
                     self.assertFalse(np.array_equal(baseline, rollout(changed)))
         scheduled = self.dynamic_artifact()
@@ -476,6 +530,15 @@ class PhysicsDynamicTests(unittest.TestCase):
 
 
 class PhysicsArtifactTests(unittest.TestCase):
+    def test_plate_fluid_effectiveness_cannot_exceed_one(self):
+        artifact = json.loads(json.dumps(KNOWN_ARTIFACT))
+        artifact["dynamic"] = json.loads(json.dumps(DEFAULT_DYNAMIC_PARAMETERS))
+        artifact["thermal"] = json.loads(json.dumps(DEFAULT_THERMAL_PARAMETERS))
+        artifact["thermal"]["plate_fluid_effectiveness"] = 1.01
+
+        with self.assertRaisesRegex(PhysicsArtifactError, "plate_fluid_effectiveness"):
+            validate_physics_artifact(artifact)
+
     def test_valid_artifact_round_trips_through_loader(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / "physics.json"
@@ -557,6 +620,48 @@ class PhysicsArtifactTests(unittest.TestCase):
 
 
 class PhysicsFitTests(unittest.TestCase):
+    def test_plate_refinement_freezes_every_non_plate_parameter(self):
+        base = json.loads(json.dumps(KNOWN_ARTIFACT))
+        base["dynamic"] = json.loads(json.dumps(DEFAULT_DYNAMIC_PARAMETERS))
+        base["thermal"] = json.loads(json.dumps(DEFAULT_THERMAL_PARAMETERS))
+        parameters = np.array([300.0, 5.0, 0.4])
+
+        refined = _plate_refinement_artifact(base, parameters)
+
+        self.assertEqual(
+            PLATE_REFINEMENT_KEYS,
+            (
+                "battery_plate_conductance_w_k",
+                "plate_tau_s",
+                "plate_fluid_effectiveness",
+            ),
+        )
+        self.assertEqual(refined["dynamic"], base["dynamic"])
+        for name, value in base["thermal"].items():
+            expected = (
+                parameters[PLATE_REFINEMENT_KEYS.index(name)]
+                if name in PLATE_REFINEMENT_KEYS
+                else value
+            )
+            self.assertEqual(refined["thermal"][name], expected)
+
+    def test_plate_refinement_does_not_read_test_targets(self):
+        base = json.loads(json.dumps(KNOWN_ARTIFACT))
+        base["dynamic"] = json.loads(json.dumps(DEFAULT_DYNAMIC_PARAMETERS))
+        base["thermal"] = json.loads(json.dumps(DEFAULT_THERMAL_PARAMETERS))
+        first_frame = synthetic_dynamic_frame()
+        second_frame = first_frame.copy()
+        second_frame.loc[second_frame["split"] == "test", "t_plate_c"] += 1000.0
+
+        first = refine_physics_plate(base, first_frame)
+        second = refine_physics_plate(base, second_frame)
+
+        self.assertEqual(first["thermal"], second["thermal"])
+        self.assertEqual(
+            first["fit"]["plate_refinement"],
+            second["fit"]["plate_refinement"],
+        )
+
     def test_dynamic_fit_uses_evaporation_and_each_thermal_state_not_condenser(self):
         response_states = {state_name for state_name, _, _ in DYNAMIC_RESPONSE_FIELDS}
         self.assertIn("q_evap_w", response_states)

@@ -21,6 +21,7 @@ from mpc_physics_predictor import (
     SCHEDULE_PARAMETER_NAMES,
     evaluate_physics_capacity,
     initialize_physics_state,
+    load_physics_artifact,
     step_physics_predictor,
     validate_physics_artifact,
 )
@@ -66,12 +67,12 @@ THERMAL_KEYS = tuple(DEFAULT_THERMAL_PARAMETERS)
 SCHEDULE_KEYS = tuple(sorted(SCHEDULE_PARAMETER_NAMES))
 DYNAMIC_LOWER = np.array(
     [0.1, 0.1, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0]
-    + [2500.0, 0.05, 1600.0, 50000.0, 10000.0, 20.0, 1.0, 0.1],
+    + [2500.0, 0.05, 1600.0, 50000.0, 10000.0, 20.0, 1.0, 0.1, 0.05],
     dtype=float,
 )
 DYNAMIC_UPPER = np.array(
     [30.0, 30.0, 60.0, 60.0, 200.0, 200.0, 60.0, 60.0]
-    + [4500.0, 0.8, 4800.0, 1000000.0, 500000.0, 2000.0, 100.0, 100.0],
+    + [4500.0, 0.8, 4800.0, 1000000.0, 500000.0, 2000.0, 100.0, 100.0, 1.0],
     dtype=float,
 )
 DYNAMIC_START = np.array(
@@ -79,6 +80,13 @@ DYNAMIC_START = np.array(
     + [DEFAULT_THERMAL_PARAMETERS[name] for name in THERMAL_KEYS],
     dtype=float,
 )
+PLATE_REFINEMENT_KEYS = (
+    "battery_plate_conductance_w_k",
+    "plate_tau_s",
+    "plate_fluid_effectiveness",
+)
+PLATE_REFINEMENT_LOWER = np.array([20.0, 1.0, 0.05], dtype=float)
+PLATE_REFINEMENT_UPPER = np.array([2000.0, 100.0, 1.0], dtype=float)
 DYNAMIC_REQUIRED_COLUMNS = (
     "scenario_id",
     "split",
@@ -580,6 +588,94 @@ def _dynamic_validation_metric(artifact: dict, validation: pd.DataFrame) -> floa
     return metric
 
 
+def _plate_refinement_artifact(base_artifact: dict, parameters: np.ndarray) -> dict:
+    if parameters.shape != (len(PLATE_REFINEMENT_KEYS),):
+        raise ValueError("Plate refinement parameter vector has the wrong length")
+    artifact = json.loads(json.dumps(base_artifact))
+    for name, value in zip(PLATE_REFINEMENT_KEYS, parameters):
+        artifact["thermal"][name] = float(value)
+    validate_physics_artifact(artifact)
+    return artifact
+
+
+def _fit_plate_refinement_candidate(
+    base_artifact: dict, train: pd.DataFrame
+) -> tuple[dict, object]:
+    thermal = base_artifact["thermal"]
+    start = np.array(
+        [
+            float(thermal.get(name, DEFAULT_THERMAL_PARAMETERS[name]))
+            for name in PLATE_REFINEMENT_KEYS
+        ],
+        dtype=float,
+    )
+
+    def residual(parameters: np.ndarray) -> np.ndarray:
+        artifact = _plate_refinement_artifact(base_artifact, parameters)
+        dynamic_errors = _dynamic_errors(artifact, train)
+        regularization = 0.05 * (parameters - start) / (
+            PLATE_REFINEMENT_UPPER - PLATE_REFINEMENT_LOWER
+        )
+        return np.concatenate((dynamic_errors, regularization))
+
+    result = least_squares(
+        residual,
+        start,
+        bounds=(PLATE_REFINEMENT_LOWER, PLATE_REFINEMENT_UPPER),
+        max_nfev=50,
+        tr_solver="lsmr",
+    )
+    parameters = np.asarray(result.x, dtype=float)
+    if (
+        not result.success
+        or parameters.shape != start.shape
+        or not np.isfinite(parameters).all()
+        or np.any(parameters < PLATE_REFINEMENT_LOWER)
+        or np.any(parameters > PLATE_REFINEMENT_UPPER)
+    ):
+        raise RuntimeError("Plate refinement fitting failed")
+    return _plate_refinement_artifact(base_artifact, parameters), result
+
+
+def refine_physics_plate(base_artifact: dict, dynamic_frame: pd.DataFrame) -> dict:
+    validate_physics_artifact(base_artifact)
+    if "dynamic" not in base_artifact or "thermal" not in base_artifact:
+        raise ValueError("Plate refinement requires a dynamic physics artifact")
+    validate_identification_frame(dynamic_frame)
+    train = dynamic_frame.loc[dynamic_frame["split"] == "train"].copy()
+    validation = dynamic_frame.loc[dynamic_frame["split"] == "validation"].copy()
+    _validate_dynamic_subset(train, "train", allow_empty=False)
+    _validate_dynamic_subset(validation, "validation", allow_empty=True)
+
+    candidate, result = _fit_plate_refinement_candidate(base_artifact, train)
+    base_metric = _dynamic_validation_metric(base_artifact, validation)
+    candidate_metric = _dynamic_validation_metric(candidate, validation)
+    selected = candidate
+    if base_metric is not None and candidate_metric is not None:
+        if candidate_metric >= base_metric:
+            selected = json.loads(json.dumps(base_artifact))
+
+    selected.setdefault("fit", {})["plate_refinement"] = {
+        "fit_status": (
+            "validated" if not validation.empty else "mechanical_smoke_unvalidated"
+        ),
+        "selection_source": (
+            "validation_only" if not validation.empty else "fixed_candidate_no_validation"
+        ),
+        "refined_parameters": list(PLATE_REFINEMENT_KEYS),
+        "all_other_parameters_frozen": True,
+        "selected": selected is candidate,
+        "base_validation_weighted_mae": base_metric,
+        "candidate_validation_weighted_mae": candidate_metric,
+        "optimizer": {
+            "success": bool(result.success),
+            "cost": float(result.cost),
+        },
+    }
+    validate_physics_artifact(selected)
+    return selected
+
+
 def fit_physics_dynamic(base_artifact: dict, dynamic_frame: pd.DataFrame) -> dict:
     validate_physics_artifact(base_artifact)
     validate_identification_frame(dynamic_frame)
@@ -656,18 +752,29 @@ def _validate_output_path(path: str | Path) -> Path:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Fit the layered physics-P predictor")
-    parser.add_argument("--steady-csv", required=True)
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--steady-csv")
+    source.add_argument("--plate-refinement-base")
     parser.add_argument("--dynamic-csv")
     parser.add_argument("--output", required=True)
     arguments = parser.parse_args()
 
-    frame = pd.read_csv(arguments.steady_csv, encoding="utf-8")
     dynamic_frame = (
         pd.read_csv(arguments.dynamic_csv, encoding="utf-8")
         if arguments.dynamic_csv
         else None
     )
-    artifact = fit_physics_artifact(frame, dynamic_frame=dynamic_frame)
+    if arguments.plate_refinement_base:
+        if dynamic_frame is None:
+            parser.error("--plate-refinement-base requires --dynamic-csv")
+        base_artifact = load_physics_artifact(
+            arguments.plate_refinement_base,
+            require_validated=True,
+        )
+        artifact = refine_physics_plate(base_artifact, dynamic_frame)
+    else:
+        frame = pd.read_csv(arguments.steady_csv, encoding="utf-8")
+        artifact = fit_physics_artifact(frame, dynamic_frame=dynamic_frame)
     output_path = _validate_output_path(arguments.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(
@@ -682,6 +789,11 @@ def main() -> None:
         print(
             "dynamic_model="
             f"{artifact['fit']['dynamic_fit']['selected_time_constant_model']}"
+        )
+    if "plate_refinement" in artifact["fit"]:
+        print(
+            "plate_refinement_selected="
+            f"{artifact['fit']['plate_refinement']['selected']}"
         )
     print(f"artifact={output_path}")
 

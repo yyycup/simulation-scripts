@@ -41,6 +41,7 @@ DEFAULT_THERMAL_PARAMETERS = {
     "battery_plate_conductance_w_k": 520.0,
     "plate_tau_s": 20.0,
     "ambient_conductance_w_k": 3.0,
+    "plate_fluid_effectiveness": 1.0,
 }
 
 SCHEDULE_PARAMETER_NAMES = {
@@ -331,14 +332,29 @@ def validate_physics_artifact(artifact: object) -> dict:
 
             if not isinstance(thermal, dict):
                 raise ValueError("thermal must be an object")
-            if set(thermal) != set(DEFAULT_THERMAL_PARAMETERS):
+            required_thermal = set(DEFAULT_THERMAL_PARAMETERS) - {
+                "plate_fluid_effectiveness"
+            }
+            thermal_keys = set(thermal)
+            if (
+                thermal_keys != required_thermal
+                and thermal_keys != set(DEFAULT_THERMAL_PARAMETERS)
+            ):
                 raise ValueError(
-                    f"thermal keys must be exactly {sorted(DEFAULT_THERMAL_PARAMETERS)}"
+                    "thermal keys must contain the legacy thermal fields and may "
+                    "add plate_fluid_effectiveness"
                 )
             for name, value in thermal.items():
                 number = _finite_number(value, f"thermal.{name}")
                 if number <= 0.0:
                     raise ValueError(f"thermal.{name} must be greater than zero")
+            plate_fluid_effectiveness = float(
+                thermal.get("plate_fluid_effectiveness", 1.0)
+            )
+            if plate_fluid_effectiveness > 1.0:
+                raise ValueError(
+                    "thermal.plate_fluid_effectiveness must not exceed one"
+                )
     except (TypeError, ValueError) as exc:
         raise PhysicsArtifactError(str(exc)) from exc
     return artifact
@@ -605,7 +621,9 @@ def step_physics_predictor(
         float(thermal["coolant_mass_flow_ref_kg_s"])
         * float(thermal["coolant_cp_j_kg_k"])
     )
-    plate_fluid_conductance = min(
+    plate_fluid_conductance = float(
+        thermal.get("plate_fluid_effectiveness", 1.0)
+    ) * min(
         flow_capacity,
         reference_flow_capacity * pump_ratio**0.8,
     )
