@@ -101,7 +101,6 @@ DYNAMIC_REQUIRED_COLUMNS = (
 DYNAMIC_RESPONSE_FIELDS = (
     ("n_comp_eff_rpm", "n_comp_eff_rpm", 500.0),
     ("n_pump_eff_rpm", "n_pump_eff_rpm", 500.0),
-    ("q_cond_w", "q_cond_eff_w", 500.0),
     ("q_evap_w", "q_evap_eff_w", 500.0),
     ("t_supply_c", "t_supply_c", 1.0),
     ("t_plate_c", "t_plate_c", 1.0),
@@ -623,6 +622,8 @@ def fit_physics_dynamic(base_artifact: dict, dynamic_frame: pd.DataFrame) -> dic
         "constant_validation_weighted_mae": constant_metric,
         "scheduled_validation_weighted_mae": scheduled_metric,
         "scheduled_candidate_status": scheduled_status,
+        "q_cond_role": "internal_refrigeration_lag_not_condenser_prediction",
+        "excluded_observation_fields": ["q_cond_eff_w"],
         "training_horizons_steps": list(TRAINING_HORIZONS),
         "train_scenarios": int(train["scenario_id"].nunique()),
         "validation_scenarios": int(validation["scenario_id"].nunique()),

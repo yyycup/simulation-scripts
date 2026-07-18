@@ -557,8 +557,10 @@ class PhysicsArtifactTests(unittest.TestCase):
 
 
 class PhysicsFitTests(unittest.TestCase):
-    def test_dynamic_fit_uses_each_thermal_state_at_every_step(self):
+    def test_dynamic_fit_uses_evaporation_and_each_thermal_state_not_condenser(self):
         response_states = {state_name for state_name, _, _ in DYNAMIC_RESPONSE_FIELDS}
+        self.assertIn("q_evap_w", response_states)
+        self.assertNotIn("q_cond_w", response_states)
         self.assertTrue(
             {
                 "t_supply_c",
@@ -768,6 +770,11 @@ class PhysicsFitTests(unittest.TestCase):
             consumed_parameter_names(artifact),
         )
         metadata = artifact["fit"]["dynamic_fit"]
+        self.assertEqual(
+            metadata["q_cond_role"],
+            "internal_refrigeration_lag_not_condenser_prediction",
+        )
+        self.assertEqual(metadata["excluded_observation_fields"], ["q_cond_eff_w"])
         self.assertEqual(metadata["training_horizons_steps"], [10, 20, 60])
         self.assertEqual(metadata["selection_source"], "validation_only")
         self.assertEqual(metadata["scheduled_minimum_improvement"], 0.10)
