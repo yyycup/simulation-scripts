@@ -32,8 +32,11 @@ DEFAULT_DYNAMIC_PARAMETERS = {
     "return_delay_s": 20.0,
 }
 
+# Known coolant property; keep synchronized with thermal_system.cp_cool.
+PHYSICAL_COOLANT_CP_J_KG_K = 3391.0
+
 DEFAULT_THERMAL_PARAMETERS = {
-    "coolant_cp_j_kg_k": 3500.0,
+    "coolant_cp_j_kg_k": PHYSICAL_COOLANT_CP_J_KG_K,
     "coolant_mass_flow_ref_kg_s": 0.25,
     "n_pump_ref_rpm": 2000.0,
     "battery_heat_capacity_j_k": 246844.0,

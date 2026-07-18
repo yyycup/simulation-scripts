@@ -10,21 +10,27 @@ import numpy as np
 import pandas as pd
 
 from fit_mpc_physics_predictor import (
+    DYNAMIC_START,
     DYNAMIC_RESPONSE_FIELDS,
     PLATE_REFINEMENT_KEYS,
+    THERMAL_KEYS,
     _artifact_from_parameters,
+    _dynamic_artifact,
     _plate_refinement_artifact,
+    _supply_refinement_artifact,
     _predict,
     _validate_output_path,
     fit_physics_artifact,
     fit_physics_dynamic,
     fit_physics_predictor,
     refine_physics_plate,
+    refine_physics_supply,
 )
 from mpc_physics_predictor import (
     DEFAULT_INPUT_DOMAIN,
     DEFAULT_DYNAMIC_PARAMETERS,
     DEFAULT_THERMAL_PARAMETERS,
+    PHYSICAL_COOLANT_CP_J_KG_K,
     PhysicsArtifactError,
     PhysicsPredictorState,
     consumed_parameter_names,
@@ -620,6 +626,56 @@ class PhysicsArtifactTests(unittest.TestCase):
 
 
 class PhysicsFitTests(unittest.TestCase):
+    def test_known_coolant_cp_is_fixed_and_not_fitted(self):
+        self.assertEqual(PHYSICAL_COOLANT_CP_J_KG_K, 3391.0)
+        self.assertEqual(
+            DEFAULT_THERMAL_PARAMETERS["coolant_cp_j_kg_k"],
+            PHYSICAL_COOLANT_CP_J_KG_K,
+        )
+        self.assertNotIn("coolant_cp_j_kg_k", THERMAL_KEYS)
+
+        artifact = _dynamic_artifact(KNOWN_ARTIFACT, DYNAMIC_START, "constant")
+
+        self.assertEqual(
+            artifact["thermal"]["coolant_cp_j_kg_k"],
+            PHYSICAL_COOLANT_CP_J_KG_K,
+        )
+
+    def test_supply_refinement_changes_only_known_coolant_cp(self):
+        base = json.loads(json.dumps(KNOWN_ARTIFACT))
+        base["dynamic"] = json.loads(json.dumps(DEFAULT_DYNAMIC_PARAMETERS))
+        base["thermal"] = json.loads(json.dumps(DEFAULT_THERMAL_PARAMETERS))
+        base["thermal"]["coolant_cp_j_kg_k"] = 2981.0
+
+        refined = _supply_refinement_artifact(base)
+
+        self.assertEqual(refined["dynamic"], base["dynamic"])
+        for name, value in base["thermal"].items():
+            expected = (
+                PHYSICAL_COOLANT_CP_J_KG_K
+                if name == "coolant_cp_j_kg_k"
+                else value
+            )
+            self.assertEqual(refined["thermal"][name], expected)
+
+    def test_supply_refinement_does_not_read_test_targets(self):
+        base = json.loads(json.dumps(KNOWN_ARTIFACT))
+        base["dynamic"] = json.loads(json.dumps(DEFAULT_DYNAMIC_PARAMETERS))
+        base["thermal"] = json.loads(json.dumps(DEFAULT_THERMAL_PARAMETERS))
+        base["thermal"]["coolant_cp_j_kg_k"] = 2981.0
+        first_frame = synthetic_dynamic_frame()
+        second_frame = first_frame.copy()
+        second_frame.loc[second_frame["split"] == "test", "t_supply_c"] += 1000.0
+
+        first = refine_physics_supply(base, first_frame)
+        second = refine_physics_supply(base, second_frame)
+
+        self.assertEqual(first["thermal"], second["thermal"])
+        self.assertEqual(
+            first["fit"]["supply_refinement"],
+            second["fit"]["supply_refinement"],
+        )
+
     def test_plate_refinement_freezes_every_non_plate_parameter(self):
         base = json.loads(json.dumps(KNOWN_ARTIFACT))
         base["dynamic"] = json.loads(json.dumps(DEFAULT_DYNAMIC_PARAMETERS))

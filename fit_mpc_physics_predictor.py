@@ -18,6 +18,7 @@ from mpc_physics_predictor import (
     DEFAULT_THERMAL_PARAMETERS,
     ENHANCED_CAPACITY_FEATURE_NAMES,
     ENHANCED_CAPACITY_MODEL,
+    PHYSICAL_COOLANT_CP_J_KG_K,
     SCHEDULE_PARAMETER_NAMES,
     evaluate_physics_capacity,
     initialize_physics_state,
@@ -63,16 +64,18 @@ FEATURE_COLUMNS = FIT_COLUMNS[:-1]
 DYNAMIC_NUMERIC_KEYS = tuple(
     name for name in DEFAULT_DYNAMIC_PARAMETERS if name != "time_constant_model"
 )
-THERMAL_KEYS = tuple(DEFAULT_THERMAL_PARAMETERS)
+THERMAL_KEYS = tuple(
+    name for name in DEFAULT_THERMAL_PARAMETERS if name != "coolant_cp_j_kg_k"
+)
 SCHEDULE_KEYS = tuple(sorted(SCHEDULE_PARAMETER_NAMES))
 DYNAMIC_LOWER = np.array(
     [0.1, 0.1, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0]
-    + [2500.0, 0.05, 1600.0, 50000.0, 10000.0, 20.0, 1.0, 0.1, 0.05],
+    + [0.05, 1600.0, 50000.0, 10000.0, 20.0, 1.0, 0.1, 0.05],
     dtype=float,
 )
 DYNAMIC_UPPER = np.array(
     [30.0, 30.0, 60.0, 60.0, 200.0, 200.0, 60.0, 60.0]
-    + [4500.0, 0.8, 4800.0, 1000000.0, 500000.0, 2000.0, 100.0, 100.0, 1.0],
+    + [0.8, 4800.0, 1000000.0, 500000.0, 2000.0, 100.0, 100.0, 1.0],
     dtype=float,
 )
 DYNAMIC_START = np.array(
@@ -465,8 +468,11 @@ def _dynamic_artifact(base_artifact: dict, parameters: np.ndarray, model: str) -
         artifact["dynamic"][name] = float(parameters[index])
     offset = len(DYNAMIC_NUMERIC_KEYS)
     artifact["thermal"] = {
-        name: float(parameters[offset + index])
-        for index, name in enumerate(THERMAL_KEYS)
+        "coolant_cp_j_kg_k": PHYSICAL_COOLANT_CP_J_KG_K,
+        **{
+            name: float(parameters[offset + index])
+            for index, name in enumerate(THERMAL_KEYS)
+        },
     }
     if model == "scheduled":
         for index, name in enumerate(SCHEDULE_KEYS):
@@ -586,6 +592,47 @@ def _dynamic_validation_metric(artifact: dict, validation: pd.DataFrame) -> floa
     if not math.isfinite(metric):
         raise RuntimeError("Dynamic validation metric is not finite")
     return metric
+
+
+def _supply_refinement_artifact(base_artifact: dict) -> dict:
+    artifact = json.loads(json.dumps(base_artifact))
+    artifact["thermal"]["coolant_cp_j_kg_k"] = PHYSICAL_COOLANT_CP_J_KG_K
+    validate_physics_artifact(artifact)
+    return artifact
+
+
+def refine_physics_supply(base_artifact: dict, dynamic_frame: pd.DataFrame) -> dict:
+    validate_physics_artifact(base_artifact)
+    if "dynamic" not in base_artifact or "thermal" not in base_artifact:
+        raise ValueError("Supply refinement requires a dynamic physics artifact")
+    validate_identification_frame(dynamic_frame)
+    validation = dynamic_frame.loc[dynamic_frame["split"] == "validation"].copy()
+    _validate_dynamic_subset(validation, "validation", allow_empty=True)
+
+    candidate = _supply_refinement_artifact(base_artifact)
+    base_metric = _dynamic_validation_metric(base_artifact, validation)
+    candidate_metric = _dynamic_validation_metric(candidate, validation)
+    selected = candidate
+    if base_metric is not None and candidate_metric is not None:
+        if candidate_metric >= base_metric:
+            selected = json.loads(json.dumps(base_artifact))
+
+    selected.setdefault("fit", {})["supply_refinement"] = {
+        "fit_status": (
+            "validated" if not validation.empty else "mechanical_smoke_unvalidated"
+        ),
+        "selection_source": (
+            "validation_only" if not validation.empty else "known_physical_constant"
+        ),
+        "corrected_parameter": "coolant_cp_j_kg_k",
+        "physical_value_j_kg_k": PHYSICAL_COOLANT_CP_J_KG_K,
+        "all_other_parameters_frozen": True,
+        "selected": selected is candidate,
+        "base_validation_weighted_mae": base_metric,
+        "candidate_validation_weighted_mae": candidate_metric,
+    }
+    validate_physics_artifact(selected)
+    return selected
 
 
 def _plate_refinement_artifact(base_artifact: dict, parameters: np.ndarray) -> dict:
@@ -755,6 +802,7 @@ def main() -> None:
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--steady-csv")
     source.add_argument("--plate-refinement-base")
+    source.add_argument("--supply-refinement-base")
     parser.add_argument("--dynamic-csv")
     parser.add_argument("--output", required=True)
     arguments = parser.parse_args()
@@ -764,7 +812,15 @@ def main() -> None:
         if arguments.dynamic_csv
         else None
     )
-    if arguments.plate_refinement_base:
+    if arguments.supply_refinement_base:
+        if dynamic_frame is None:
+            parser.error("--supply-refinement-base requires --dynamic-csv")
+        base_artifact = load_physics_artifact(
+            arguments.supply_refinement_base,
+            require_validated=True,
+        )
+        artifact = refine_physics_supply(base_artifact, dynamic_frame)
+    elif arguments.plate_refinement_base:
         if dynamic_frame is None:
             parser.error("--plate-refinement-base requires --dynamic-csv")
         base_artifact = load_physics_artifact(
@@ -794,6 +850,11 @@ def main() -> None:
         print(
             "plate_refinement_selected="
             f"{artifact['fit']['plate_refinement']['selected']}"
+        )
+    if "supply_refinement" in artifact["fit"]:
+        print(
+            "supply_refinement_selected="
+            f"{artifact['fit']['supply_refinement']['selected']}"
         )
     print(f"artifact={output_path}")
 
