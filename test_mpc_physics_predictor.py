@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 
 from fit_mpc_physics_predictor import (
+    DYNAMIC_RESPONSE_FIELDS,
     _artifact_from_parameters,
     _predict,
     _validate_output_path,
@@ -353,6 +354,34 @@ class PhysicsDynamicTests(unittest.TestCase):
         self.assertAlmostEqual(result.t_batt_c, 30.0)
         self.assertAlmostEqual(result.t_cool_c, 30.0)
 
+    def test_hot_battery_heat_is_stored_in_cold_plate_state(self):
+        artifact = self.dynamic_artifact()
+        artifact["dynamic"]["supply_delay_s"] = 0.0
+        state = initialize_physics_state(
+            n_comp_eff_rpm=1000.0,
+            n_pump_eff_rpm=2000.0,
+            q_cond_w=0.0,
+            q_evap_w=0.0,
+            t_supply_c=30.0,
+            t_plate_c=30.0,
+            t_return_c=30.0,
+            t_batt_c=35.0,
+            t_cool_c=30.0,
+        )
+
+        result = step_physics_predictor(
+            state,
+            n_comp_cmd_rpm=1000.0,
+            n_pump_cmd_rpm=2000.0,
+            q_gen_w=0.0,
+            t_ambient_c=35.0,
+            dt_s=5.0,
+            artifact=artifact,
+        )
+
+        self.assertGreater(result.t_plate_c, state.t_plate_c)
+        self.assertLess(result.t_batt_c, state.t_batt_c)
+
     def test_more_cooling_lowers_supply_temperature(self):
         artifact = self.dynamic_artifact()
         artifact["dynamic"]["supply_delay_s"] = 0.0
@@ -528,6 +557,18 @@ class PhysicsArtifactTests(unittest.TestCase):
 
 
 class PhysicsFitTests(unittest.TestCase):
+    def test_dynamic_fit_uses_each_thermal_state_at_every_step(self):
+        response_states = {state_name for state_name, _, _ in DYNAMIC_RESPONSE_FIELDS}
+        self.assertTrue(
+            {
+                "t_supply_c",
+                "t_plate_c",
+                "t_return_c",
+                "t_batt_c",
+                "t_cool_c",
+            }.issubset(response_states)
+        )
+
     def test_vectorized_fit_formula_matches_runtime_evaluator(self):
         parameters = np.linspace(-0.08, 0.12, 14)
         features = np.array(

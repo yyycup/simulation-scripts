@@ -103,6 +103,11 @@ DYNAMIC_RESPONSE_FIELDS = (
     ("n_pump_eff_rpm", "n_pump_eff_rpm", 500.0),
     ("q_cond_w", "q_cond_eff_w", 500.0),
     ("q_evap_w", "q_evap_eff_w", 500.0),
+    ("t_supply_c", "t_supply_c", 1.0),
+    ("t_plate_c", "t_plate_c", 1.0),
+    ("t_return_c", "t_return_c", 1.0),
+    ("t_batt_c", "t_batt_c", 0.2),
+    ("t_cool_c", "t_cool_c", 0.5),
 )
 HORIZON_FIELDS = (
     ("q_evap_w", "q_evap_eff_w", 500.0),

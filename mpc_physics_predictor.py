@@ -598,15 +598,37 @@ def step_physics_predictor(
         dt,
         state.t_supply_c,
     )
+    battery_plate_conductance = (
+        float(thermal["battery_plate_conductance_w_k"]) * pump_ratio**0.8
+    )
+    reference_flow_capacity = (
+        float(thermal["coolant_mass_flow_ref_kg_s"])
+        * float(thermal["coolant_cp_j_kg_k"])
+    )
+    plate_fluid_conductance = min(
+        flow_capacity,
+        reference_flow_capacity * pump_ratio**0.8,
+    )
+    plate_heat_capacity = (
+        float(thermal["plate_tau_s"]) * reference_flow_capacity
+    )
+    total_plate_conductance = (
+        battery_plate_conductance + plate_fluid_conductance
+    )
+    plate_equilibrium = (
+        battery_plate_conductance * state.t_batt_c
+        + plate_fluid_conductance * t_supply
+    ) / total_plate_conductance
+    plate_time_constant = plate_heat_capacity / total_plate_conductance
     t_plate = lag_step(
         state.t_plate_c,
-        t_supply,
+        plate_equilibrium,
         dt,
-        float(thermal["plate_tau_s"]),
+        plate_time_constant,
     )
-    conductance = float(thermal["battery_plate_conductance_w_k"]) * pump_ratio**0.8
-    q_batt_plate = conductance * (state.t_batt_c - t_plate)
-    plate_out = t_plate + q_batt_plate / flow_capacity
+    q_batt_plate = battery_plate_conductance * (state.t_batt_c - t_plate)
+    q_plate_fluid = plate_fluid_conductance * (t_plate - t_supply)
+    plate_out = t_supply + q_plate_fluid / flow_capacity
     t_return, return_history = _delay_step(
         state.return_history_c,
         plate_out,
