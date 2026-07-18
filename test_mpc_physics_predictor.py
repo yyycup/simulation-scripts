@@ -10,6 +10,8 @@ import numpy as np
 import pandas as pd
 
 from fit_mpc_physics_predictor import (
+    _artifact_from_parameters,
+    _predict,
     _validate_output_path,
     fit_physics_artifact,
     fit_physics_dynamic,
@@ -39,6 +41,36 @@ KNOWN_ARTIFACT = {
     "gate": {"n_on_rpm": 1950.0, "width_rpm": 25.0},
     "capacity": {
         "coefficients": [0.6, -0.1, 0.015, -0.002, 0.0, 0.0],
+        "n_pump_ref_rpm": 2000.0,
+        "q_upper_w": 4800.0,
+    },
+}
+
+
+ENHANCED_ARTIFACT = {
+    "model_type": "physics_p",
+    "schema_version": 1,
+    "gate": {"mode": "hard", "n_on_rpm": 2000.0, "width_rpm": 10.0},
+    "capacity": {
+        "model": "single_enhanced_v1",
+        "coefficients": [1.0] + [0.0] * 13,
+        "feature_names": [
+            "base",
+            "pump_ratio",
+            "coolant_temperature",
+            "ambient_temperature",
+            "compressor_speed",
+            "compressor_x_coolant",
+            "compressor_x_ambient",
+            "pump_x_coolant",
+            "compressor_squared",
+            "coolant_x_ambient",
+            "coolant_squared",
+            "ambient_squared",
+            "pump_x_ambient",
+            "pump_x_compressor",
+        ],
+        "minimum_active_rpm": 2000.0,
         "n_pump_ref_rpm": 2000.0,
         "q_upper_w": 4800.0,
     },
@@ -133,6 +165,28 @@ def synthetic_dynamic_frame():
 
 
 class PhysicsCapacityTests(unittest.TestCase):
+    def test_enhanced_single_model_has_exact_physical_activation_boundary(self):
+        self.assertEqual(
+            evaluate_physics_capacity(
+                1999.0, 2400.0, 25.0, 30.0, artifact=ENHANCED_ARTIFACT
+            ),
+            0.0,
+        )
+        self.assertEqual(
+            evaluate_physics_capacity(
+                2000.0, 2400.0, 25.0, 30.0, artifact=ENHANCED_ARTIFACT
+            ),
+            2000.0,
+        )
+
+    def test_enhanced_single_model_declares_each_interpretable_term(self):
+        validate_physics_artifact(ENHANCED_ARTIFACT)
+        capacity = ENHANCED_ARTIFACT["capacity"]
+        self.assertEqual(capacity["model"], "single_enhanced_v1")
+        self.assertEqual(len(capacity["coefficients"]), 14)
+        self.assertEqual(len(capacity["feature_names"]), 14)
+        self.assertEqual(len(set(capacity["feature_names"])), 14)
+
     def test_default_domain_evaluates_15c_without_clipping_to_20c(self):
         self.assertEqual(DEFAULT_INPUT_DOMAIN["t_cool_c"], [15.0, 35.0])
         implicit = evaluate_physics_capacity(
@@ -443,6 +497,20 @@ class PhysicsArtifactTests(unittest.TestCase):
                 with self.assertRaisesRegex(PhysicsArtifactError, "input_domain"):
                     validate_physics_artifact(artifact)
 
+    def test_enhanced_capacity_metadata_is_strictly_validated(self):
+        mutations = (
+            lambda value: value["gate"].update(mode="smooth"),
+            lambda value: value["capacity"].update(minimum_active_rpm=1999.0),
+            lambda value: value["capacity"].update(feature_names=[]),
+            lambda value: value["capacity"].update(coefficients=[0.0] * 13),
+        )
+        for mutate in mutations:
+            artifact = json.loads(json.dumps(ENHANCED_ARTIFACT))
+            mutate(artifact)
+            with self.subTest(artifact=artifact):
+                with self.assertRaises(PhysicsArtifactError):
+                    validate_physics_artifact(artifact)
+
     def test_require_validated_loader_rejects_smoke_and_accepts_validated(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / "physics.json"
@@ -460,15 +528,42 @@ class PhysicsArtifactTests(unittest.TestCase):
 
 
 class PhysicsFitTests(unittest.TestCase):
+    def test_vectorized_fit_formula_matches_runtime_evaluator(self):
+        parameters = np.linspace(-0.08, 0.12, 14)
+        features = np.array(
+            [
+                [1999.0, 1600.0, 15.0, 20.0],
+                [2000.0, 2400.0, 25.0, 30.0],
+                [4200.0, 3200.0, 30.0, 35.0],
+                [6000.0, 4800.0, 35.0, 40.0],
+            ],
+            dtype=float,
+        )
+        artifact = _artifact_from_parameters(parameters)
+        runtime = np.array(
+            [evaluate_physics_capacity(*row, artifact=artifact) for row in features]
+        )
+        np.testing.assert_allclose(_predict(parameters, features), runtime, atol=1e-12)
+
     def test_synthetic_fit_is_valid_bounded_monotonic_and_accurate(self):
         artifact = fit_physics_artifact(synthetic_frame())
         validate_physics_artifact(artifact)
-        self.assertTrue(1900 <= artifact["gate"]["n_on_rpm"] <= 2000)
-        self.assertTrue(10 <= artifact["gate"]["width_rpm"] <= 80)
+        self.assertEqual(artifact["gate"]["mode"], "hard")
+        self.assertEqual(artifact["gate"]["n_on_rpm"], 2000.0)
+        self.assertEqual(artifact["capacity"]["model"], "single_enhanced_v1")
+        self.assertEqual(artifact["capacity"]["minimum_active_rpm"], 2000.0)
+        self.assertEqual(
+            len(artifact["capacity"]["coefficients"]),
+            len(artifact["capacity"]["feature_names"]),
+        )
+        self.assertLessEqual(len(artifact["capacity"]["coefficients"]), 14)
         self.assertTrue(all(-2 <= value <= 2 for value in artifact["capacity"]["coefficients"]))
         self.assertLess(artifact["fit"]["validation_metrics"]["mae_w"], 150.0)
         self.assertEqual(artifact["fit"]["fit_status"], "validated")
-        self.assertEqual(artifact["fit"]["selection_metric"], "validation_mae_w")
+        self.assertEqual(
+            artifact["fit"]["selection_metric"],
+            "validation_active_mape_percent",
+        )
         self.assertIn("selected_features", artifact["fit"])
         self.assertIn("selected_mask", artifact["fit"])
         self.assertIn("ridge", artifact["fit"])

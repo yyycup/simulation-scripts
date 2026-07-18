@@ -16,6 +16,8 @@ from mpc_physics_predictor import (
     DEFAULT_DYNAMIC_PARAMETERS,
     DEFAULT_INPUT_DOMAIN,
     DEFAULT_THERMAL_PARAMETERS,
+    ENHANCED_CAPACITY_FEATURE_NAMES,
+    ENHANCED_CAPACITY_MODEL,
     SCHEDULE_PARAMETER_NAMES,
     evaluate_physics_capacity,
     initialize_physics_state,
@@ -26,22 +28,28 @@ from mpc_predictor_selection import PHYSICS_P
 from predictor_identification_data import validate_identification_frame
 
 
-LOWER = np.array([1900, 10, -2, -2, -2, -2, -2, -2], dtype=float)
-UPPER = np.array([2000, 80, 2, 2, 2, 2, 2, 2], dtype=float)
+LOWER = np.full(len(ENHANCED_CAPACITY_FEATURE_NAMES), -2.0, dtype=float)
+UPPER = np.full(len(ENHANCED_CAPACITY_FEATURE_NAMES), 2.0, dtype=float)
 STARTS = (
-    np.array([1925, 15, 0.6, -0.1, 0, 0, 0, 0], dtype=float),
-    np.array([1950, 25, 0.6, -0.1, 0, 0, 0, 0], dtype=float),
-    np.array([1975, 50, 0.6, -0.1, 0, 0, 0, 0], dtype=float),
+    np.array([0.6, -0.1, 0.015, -0.002] + [0.0] * 10, dtype=float),
+    np.array([0.5, -0.05, 0.05, -0.01] + [0.0] * 10, dtype=float),
 )
 FEATURE_CANDIDATES = (
-    ("base", (True, True, True, True, False, False)),
-    ("base_plus_c4", (True, True, True, True, True, False)),
-    ("base_plus_c5", (True, True, True, True, False, True)),
-    ("full", (True, True, True, True, True, True)),
+    ("base_5", (True,) * 5 + (False,) * 9),
+    ("physical_7", (True,) * 7 + (False,) * 7),
+    ("physical_10", (True,) * 10 + (False,) * 4),
+    ("physical_14", (True,) * 14),
 )
 RIDGE_CANDIDATES = (1e-6, 1e-4, 1e-2)
+WEIGHT_POWER_CANDIDATES = (0.0, 0.5, 1.0)
 N_PUMP_REF_RPM = 2000.0
 Q_UPPER_W = 4800.0
+MINIMUM_ACTIVE_RPM = 2000.0
+VALIDATION_TARGETS = {
+    "active_mape_percent": 4.25,
+    "active_rmse_w": 100.0,
+    "active_max_relative_error_percent": 16.5,
+}
 FIT_COLUMNS = (
     "n_comp_eff_rpm",
     "n_pump_eff_rpm",
@@ -109,7 +117,7 @@ TRAINING_HORIZONS = (10, 20, 60)
 
 def _masked_parameters(parameters: np.ndarray, mask: tuple[bool, ...]) -> np.ndarray:
     masked = np.asarray(parameters, dtype=float).copy()
-    masked[2:] *= np.asarray(mask, dtype=float)
+    masked *= np.asarray(mask, dtype=float)
     return masked
 
 
@@ -118,11 +126,15 @@ def _artifact_from_parameters(parameters: np.ndarray) -> dict:
         "model_type": PHYSICS_P,
         "schema_version": 1,
         "gate": {
-            "n_on_rpm": float(parameters[0]),
-            "width_rpm": float(parameters[1]),
+            "mode": "hard",
+            "n_on_rpm": MINIMUM_ACTIVE_RPM,
+            "width_rpm": 10.0,
         },
         "capacity": {
-            "coefficients": [float(value) for value in parameters[2:]],
+            "model": ENHANCED_CAPACITY_MODEL,
+            "coefficients": [float(value) for value in parameters],
+            "feature_names": list(ENHANCED_CAPACITY_FEATURE_NAMES),
+            "minimum_active_rpm": MINIMUM_ACTIVE_RPM,
             "n_pump_ref_rpm": N_PUMP_REF_RPM,
             "q_upper_w": Q_UPPER_W,
         },
@@ -156,14 +168,33 @@ def _validate_fit_subset(frame: pd.DataFrame, expected_split: str, allow_empty: 
 
 
 def _predict(parameters: np.ndarray, features: np.ndarray) -> np.ndarray:
-    artifact = _artifact_from_parameters(parameters)
-    return np.asarray(
-        [
-            evaluate_physics_capacity(*feature, artifact=artifact)
-            for feature in features
-        ],
-        dtype=float,
+    values = np.asarray(features, dtype=float)
+    n_comp = values[:, 0]
+    pump_ratio = N_PUMP_REF_RPM / values[:, 1]
+    coolant = (values[:, 2] - 27.5) / 7.5
+    ambient = (values[:, 3] - 30.0) / 10.0
+    compressor = (n_comp - 4000.0) / 2000.0
+    design = np.column_stack(
+        (
+            np.ones(len(values)),
+            pump_ratio,
+            coolant,
+            ambient,
+            compressor,
+            compressor * coolant,
+            compressor * ambient,
+            pump_ratio * coolant,
+            compressor**2,
+            coolant * ambient,
+            coolant**2,
+            ambient**2,
+            pump_ratio * ambient,
+            pump_ratio * compressor,
+        )
     )
+    raw = n_comp * (design @ np.asarray(parameters, dtype=float))
+    active = np.where(n_comp < MINIMUM_ACTIVE_RPM, 0.0, raw)
+    return np.clip(active, 0.0, Q_UPPER_W)
 
 
 def _constraint_contexts(validation: pd.DataFrame) -> np.ndarray:
@@ -193,7 +224,7 @@ def _grid_predictions(
 
 def _physical_checks(parameters: np.ndarray, contexts: np.ndarray) -> tuple[float, float]:
     low_speed = _grid_predictions(
-        parameters, contexts, np.array([1000.0, 1400.0, 1800.0])
+        parameters, contexts, np.array([1000.0, 1400.0, 1800.0, 1999.0])
     )
     active = _grid_predictions(parameters, contexts, np.linspace(2000.0, 6000.0, 17))
     return float(np.max(low_speed)), float(np.min(np.diff(active, axis=1)))
@@ -205,6 +236,7 @@ def _candidate(
     contexts: np.ndarray,
     mask: tuple[bool, ...],
     ridge: float,
+    weight_power: float,
     start: np.ndarray,
 ) -> tuple[object, np.ndarray] | None:
     mask_array = np.asarray(mask, dtype=float)
@@ -212,6 +244,8 @@ def _candidate(
     def residual(parameters: np.ndarray) -> np.ndarray:
         masked = _masked_parameters(parameters, mask)
         train_errors = _predict(masked, train_features) - train_targets
+        train_scale = np.maximum(np.abs(train_targets), 1.0) ** weight_power
+        weighted_train_errors = train_errors / train_scale
         low_speed = _grid_predictions(
             masked, contexts, np.array([1000.0, 1400.0, 1800.0])
         )
@@ -220,12 +254,12 @@ def _candidate(
         )
         low_speed_penalty = np.maximum(0.0, low_speed.ravel() - 25.0)
         monotonic_penalty = np.maximum(0.0, -np.diff(active, axis=1).ravel())
-        regularization = math.sqrt(ridge) * masked[2:] * mask_array
+        regularization = math.sqrt(ridge) * masked * mask_array
         return np.concatenate(
             (
-                train_errors,
-                10.0 * low_speed_penalty,
-                10.0 * monotonic_penalty,
+                weighted_train_errors,
+                low_speed_penalty,
+                monotonic_penalty,
                 regularization,
             )
         )
@@ -264,9 +298,21 @@ def _validation_metrics(parameters: np.ndarray, validation: pd.DataFrame) -> dic
     features = validation.loc[:, FEATURE_COLUMNS].to_numpy(dtype=float)
     targets = validation["q_evap_ss_w"].to_numpy(dtype=float)
     errors = _predict(parameters, features) - targets
+    active = features[:, 0] >= MINIMUM_ACTIVE_RPM
+    active_targets = targets[active]
+    if not len(active_targets) or np.any(np.abs(active_targets) <= 1e-9):
+        raise RuntimeError("Validation requires nonzero active capacity targets")
+    active_relative_error = np.abs(errors[active]) / np.abs(active_targets)
     metrics = {
         "mae_w": float(np.mean(np.abs(errors))),
         "rmse_w": float(np.sqrt(np.mean(np.square(errors)))),
+        "active_rmse_w": float(
+            np.sqrt(np.mean(np.square(errors[active])))
+        ),
+        "active_mape_percent": float(100.0 * np.mean(active_relative_error)),
+        "active_max_relative_error_percent": float(
+            100.0 * np.max(active_relative_error)
+        ),
     }
     if not all(math.isfinite(value) for value in metrics.values()):
         raise RuntimeError("Validation metrics are not finite")
@@ -284,21 +330,27 @@ def fit_physics_predictor(
 
     configurations = []
     if validation_frame.empty:
-        configurations.append((FEATURE_CANDIDATES[0], RIDGE_CANDIDATES[1], 1))
+        configurations.append(
+            (FEATURE_CANDIDATES[0], RIDGE_CANDIDATES[1], WEIGHT_POWER_CANDIDATES[0], 0)
+        )
     else:
         for feature_candidate in FEATURE_CANDIDATES:
             for ridge in RIDGE_CANDIDATES:
-                for start_index in range(len(STARTS)):
-                    configurations.append((feature_candidate, ridge, start_index))
+                for weight_power in WEIGHT_POWER_CANDIDATES:
+                    for start_index in range(len(STARTS)):
+                        configurations.append(
+                            (feature_candidate, ridge, weight_power, start_index)
+                        )
 
     candidates = []
-    for (feature_name, mask), ridge, start_index in configurations:
+    for (feature_name, mask), ridge, weight_power, start_index in configurations:
         fitted = _candidate(
             train_features,
             train_targets,
             contexts,
             mask,
             ridge,
+            weight_power,
             STARTS[start_index],
         )
         if fitted is None:
@@ -313,6 +365,7 @@ def fit_physics_predictor(
                 "feature_name": feature_name,
                 "mask": mask,
                 "ridge": ridge,
+                "weight_power": weight_power,
                 "start_index": start_index,
                 "result": result,
                 "parameters": parameters,
@@ -327,19 +380,26 @@ def fit_physics_predictor(
     if validation_frame.empty:
         selected = candidates[0]
     else:
-        selected = None
-        for feature_name, _ in FEATURE_CANDIDATES:
-            same_features = [c for c in candidates if c["feature_name"] == feature_name]
-            if not same_features:
-                continue
-            best = min(
-                same_features,
-                key=lambda c: (c["metrics"]["mae_w"], c["ridge"], c["start_index"]),
+        accepted = [
+            candidate
+            for candidate in candidates
+            if all(
+                candidate["metrics"][name] <= limit
+                for name, limit in VALIDATION_TARGETS.items()
             )
-            if selected is None or best["metrics"]["mae_w"] < selected["metrics"]["mae_w"] - 1e-9:
-                selected = best
-        if selected is None:
-            raise RuntimeError("Physics capacity fitting failed: all candidates failed")
+        ]
+        selection_pool = accepted or candidates
+        selected = min(
+            selection_pool,
+            key=lambda candidate: (
+                sum(candidate["mask"]) if accepted else 0,
+                candidate["metrics"]["active_mape_percent"],
+                candidate["metrics"]["rmse_w"],
+                candidate["ridge"],
+                candidate["weight_power"],
+                candidate["start_index"],
+            ),
+        )
 
     parameters = selected["parameters"]
     artifact = _artifact_from_parameters(parameters)
@@ -347,11 +407,13 @@ def fit_physics_predictor(
     artifact["fit"] = {
         "fit_status": "validated" if validation_available else "mechanical_smoke_unvalidated",
         "selection_method": (
-            "validation_mae_strict_complexity"
+            "validation_targets_then_minimum_complexity"
             if validation_available
             else "fixed_mechanical_no_validation"
         ),
-        "selection_metric": "validation_mae_w" if validation_available else None,
+        "selection_metric": (
+            "validation_active_mape_percent" if validation_available else None
+        ),
         "train_rows": int(len(train_frame)),
         "validation_rows": int(len(validation_frame)),
         "validation_available": validation_available,
@@ -359,8 +421,18 @@ def fit_physics_predictor(
         "selected_features": selected["feature_name"],
         "selected_mask": list(selected["mask"]),
         "ridge": selected["ridge"],
+        "weight_power": selected["weight_power"],
         "start_index": selected["start_index"],
         "candidate_count": len(candidates),
+        "validation_targets": VALIDATION_TARGETS if validation_available else None,
+        "validation_target_met": (
+            all(
+                selected["metrics"][name] <= limit
+                for name, limit in VALIDATION_TARGETS.items()
+            )
+            if validation_available
+            else None
+        ),
         "max_low_speed_w": selected["max_low_speed_w"],
         "min_active_slope_w_per_step": selected["min_active_slope_w_per_step"],
         "optimizer": {

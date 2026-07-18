@@ -50,6 +50,25 @@ SCHEDULE_PARAMETER_NAMES = {
     "tau_evap_schedule_s",
 }
 
+LEGACY_CAPACITY_MODEL = "legacy_six_term"
+ENHANCED_CAPACITY_MODEL = "single_enhanced_v1"
+ENHANCED_CAPACITY_FEATURE_NAMES = (
+    "base",
+    "pump_ratio",
+    "coolant_temperature",
+    "ambient_temperature",
+    "compressor_speed",
+    "compressor_x_coolant",
+    "compressor_x_ambient",
+    "pump_x_coolant",
+    "compressor_squared",
+    "coolant_x_ambient",
+    "coolant_squared",
+    "ambient_squared",
+    "pump_x_ambient",
+    "pump_x_compressor",
+)
+
 
 DEFAULT_PHYSICS_ARTIFACT = {
     "model_type": PHYSICS_P,
@@ -144,6 +163,60 @@ def active_capacity_w(
     return _finite_number(n_comp * gain, "active_capacity_w result")
 
 
+def enhanced_active_capacity_w(
+    coefficients: object,
+    n_comp_rpm: object,
+    n_pump_rpm: object,
+    t_cool_c: object,
+    t_ambient_c: object,
+    n_pump_ref_rpm: object,
+) -> float:
+    if (
+        not isinstance(coefficients, (list, tuple, np.ndarray))
+        or len(coefficients) != len(ENHANCED_CAPACITY_FEATURE_NAMES)
+    ):
+        raise ValueError(
+            "enhanced coefficients must contain exactly "
+            f"{len(ENHANCED_CAPACITY_FEATURE_NAMES)} values"
+        )
+    values = [
+        _finite_number(value, f"coefficients[{index}]")
+        for index, value in enumerate(coefficients)
+    ]
+    n_comp = _finite_number(n_comp_rpm, "n_comp_rpm")
+    n_pump = _finite_number(n_pump_rpm, "n_pump_rpm")
+    t_cool = _finite_number(t_cool_c, "t_cool_c")
+    t_ambient = _finite_number(t_ambient_c, "t_ambient_c")
+    n_pump_ref = _finite_number(n_pump_ref_rpm, "n_pump_ref_rpm")
+    if n_pump <= 0.0:
+        raise ValueError("n_pump_rpm must be greater than zero")
+    if n_pump_ref <= 0.0:
+        raise ValueError("n_pump_ref_rpm must be greater than zero")
+
+    compressor = (n_comp - 4000.0) / 2000.0
+    pump_ratio = n_pump_ref / n_pump
+    coolant = (t_cool - 27.5) / 7.5
+    ambient = (t_ambient - 30.0) / 10.0
+    features = (
+        1.0,
+        pump_ratio,
+        coolant,
+        ambient,
+        compressor,
+        compressor * coolant,
+        compressor * ambient,
+        pump_ratio * coolant,
+        compressor**2,
+        coolant * ambient,
+        coolant**2,
+        ambient**2,
+        pump_ratio * ambient,
+        pump_ratio * compressor,
+    )
+    gain = sum(coefficient * feature for coefficient, feature in zip(values, features))
+    return _finite_number(n_comp * gain, "enhanced_active_capacity_w result")
+
+
 def validate_physics_artifact(artifact: object) -> dict:
     if not isinstance(artifact, dict):
         raise PhysicsArtifactError("Physics artifact must be a JSON object")
@@ -166,11 +239,42 @@ def validate_physics_artifact(artifact: object) -> dict:
         if not 10.0 <= width <= 80.0:
             raise ValueError("gate.width_rpm must be within [10, 80]")
 
+        capacity_model = capacity.get("model", LEGACY_CAPACITY_MODEL)
+        if capacity_model not in {LEGACY_CAPACITY_MODEL, ENHANCED_CAPACITY_MODEL}:
+            raise ValueError(f"Unsupported capacity.model: {capacity_model!r}")
         coefficients = capacity.get("coefficients")
-        if not isinstance(coefficients, list) or len(coefficients) != 6:
-            raise ValueError("capacity.coefficients must be a list of exactly 6 values")
+        expected_coefficient_count = (
+            6
+            if capacity_model == LEGACY_CAPACITY_MODEL
+            else len(ENHANCED_CAPACITY_FEATURE_NAMES)
+        )
+        if (
+            not isinstance(coefficients, list)
+            or len(coefficients) != expected_coefficient_count
+        ):
+            raise ValueError(
+                "capacity.coefficients must be a list of exactly "
+                f"{expected_coefficient_count} values"
+            )
         for index, coefficient in enumerate(coefficients):
             _finite_number(coefficient, f"capacity.coefficients[{index}]")
+        gate_mode = gate.get("mode", "smooth")
+        if gate_mode not in {"smooth", "hard"}:
+            raise ValueError("gate.mode must be smooth or hard")
+        if capacity_model == ENHANCED_CAPACITY_MODEL:
+            if gate_mode != "hard":
+                raise ValueError("single_enhanced_v1 requires gate.mode == 'hard'")
+            feature_names = capacity.get("feature_names")
+            if feature_names != list(ENHANCED_CAPACITY_FEATURE_NAMES):
+                raise ValueError(
+                    "capacity.feature_names must match the enhanced physical terms"
+                )
+            minimum_active = _finite_number(
+                capacity.get("minimum_active_rpm"),
+                "capacity.minimum_active_rpm",
+            )
+            if minimum_active != 2000.0:
+                raise ValueError("capacity.minimum_active_rpm must equal 2000")
         n_pump_ref = _finite_number(
             capacity.get("n_pump_ref_rpm"), "capacity.n_pump_ref_rpm"
         )
@@ -278,19 +382,33 @@ def evaluate_physics_capacity(
         finite = _finite_number(value, name)
         lower, upper = domain[name]
         clipped[name] = max(float(lower), min(float(upper), finite))
-    gate_value = smooth_gate(
-        clipped["n_comp_rpm"],
-        gate["n_on_rpm"],
-        gate["width_rpm"],
-    )
-    active = active_capacity_w(
-        capacity["coefficients"],
-        clipped["n_comp_rpm"],
-        clipped["n_pump_rpm"],
-        clipped["t_cool_c"],
-        clipped["t_ambient_c"],
-        capacity["n_pump_ref_rpm"],
-    )
+    capacity_model = capacity.get("model", LEGACY_CAPACITY_MODEL)
+    if capacity_model == ENHANCED_CAPACITY_MODEL:
+        if clipped["n_comp_rpm"] < float(capacity["minimum_active_rpm"]):
+            return 0.0
+        gate_value = 1.0
+        active = enhanced_active_capacity_w(
+            capacity["coefficients"],
+            clipped["n_comp_rpm"],
+            clipped["n_pump_rpm"],
+            clipped["t_cool_c"],
+            clipped["t_ambient_c"],
+            capacity["n_pump_ref_rpm"],
+        )
+    else:
+        gate_value = smooth_gate(
+            clipped["n_comp_rpm"],
+            gate["n_on_rpm"],
+            gate["width_rpm"],
+        )
+        active = active_capacity_w(
+            capacity["coefficients"],
+            clipped["n_comp_rpm"],
+            clipped["n_pump_rpm"],
+            clipped["t_cool_c"],
+            clipped["t_ambient_c"],
+            capacity["n_pump_ref_rpm"],
+        )
     q_upper = _finite_number(capacity["q_upper_w"], "capacity.q_upper_w")
     clipped_active = max(0.0, min(q_upper, active))
     raw = _finite_number(gate_value * clipped_active, "physics capacity result")

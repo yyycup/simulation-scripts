@@ -2,6 +2,20 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+## 2026-07-18：P模型统一容量公式决策
+
+用户确认优先级为：物理可解释、计算简单、便于后续嵌入，并接受验证集 MAPE 约 4%。因此本阶段不采用双物理容量分支，也不采用神经网络或容量查表。
+
+采用 `single_enhanced_v1` 单一低阶容量公式：
+
+- 2000 rpm 为明确物理启停边界，低于 2000 rpm 的容量严格为 0；
+- 主动区最多使用 14 个具名物理项，包括水泵比、冷却液温度、环境温度、压缩机工作点、二次项及有限交互项；
+- 拟合仅使用 train，模型复杂度和正则化仅由 validation 选择，test 仅在模型冻结后评估一次；
+- 保留旧六系数 `legacy_six_term` 工件读取和原平滑门行为；
+- 不修改 P 动态热结构、L、MPC、Candidate B 或完整制冷循环模型。
+
+冻结后的验证集主动区结果：MAPE 4.050%、RMSE 85.805 W、最大相对误差 15.874%。独立测试集主动区结果：MAPE 4.403%、RMSE 104.741 W、最大相对误差 17.784%，低于 2000 rpm 的 MAE 为 0 W。结果工件与报告均保存到 `outputs/mpc_predictor_accuracy_correction_v2/`，不覆盖旧六系数基线。
+
 **Goal:** 修正模型L的验证语义，建立B0/P/L同口径原始单位评估，并使用完整稳态与动态数据在既有物理结构内重新辨识模型P，使误差结论可比较、可验收、可回退。
 
 **Architecture:** 先修复验证元数据，保证训练回退不会被误报为验证结果；随后扩展离线评估器，对三个独立模型使用相同初值、相同测试轨迹和相同50/100/300秒窗口。模型P先重新拟合稳态容量，再重新拟合已批准的动态与热参数；本计划不增加新物理系数、不融合P/L、不改变Candidate B运行时默认值。
