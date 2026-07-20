@@ -1,4 +1,5 @@
 import time
+from collections.abc import Mapping
 from pathlib import Path
 
 import numpy as np
@@ -268,7 +269,9 @@ def simulate_case(
     current_profile_override=None,
     pid_params=None,
     p_shadow_artifact=None,
+    p_shadow_artifacts=None,
     p_shadow_horizons_s=(50.0, 100.0, 300.0),
+    p_shadow_command_source="hold_current",
     log_func=None,
 ):
     output_root = Path(output_root)
@@ -366,16 +369,31 @@ def simulate_case(
         refrigeration_dynamic_state = None
     history = []
     snapshots = []
-    p_shadow = None
+    if p_shadow_artifact is not None and p_shadow_artifacts is not None:
+        raise ValueError("provide either p_shadow_artifact or p_shadow_artifacts, not both")
+    if p_shadow_command_source not in {"hold_current", "mpc_plan"}:
+        raise ValueError("p_shadow_command_source must be 'hold_current' or 'mpc_plan'")
+    p_shadows = {}
     if p_shadow_artifact is not None:
-        p_shadow = PhysicsPShadowPredictor(
-            p_shadow_artifact,
-            dt_s=dt,
-            horizons_s=p_shadow_horizons_s,
+        p_shadows[None] = PhysicsPShadowPredictor(
+            p_shadow_artifact, dt_s=dt, horizons_s=p_shadow_horizons_s
         )
+    elif p_shadow_artifacts is not None:
+        if not isinstance(p_shadow_artifacts, Mapping) or not p_shadow_artifacts:
+            raise ValueError("p_shadow_artifacts must be a non-empty mapping")
+        for raw_label, artifact_path in p_shadow_artifacts.items():
+            label = str(raw_label).strip()
+            if not label or not all(character.isalnum() or character == "_" for character in label):
+                raise ValueError("P shadow labels must contain only letters, numbers, or underscores")
+            p_shadows[label] = PhysicsPShadowPredictor(
+                artifact_path, dt_s=dt, horizons_s=p_shadow_horizons_s
+            )
+    if p_shadows:
         _emit(
             log_func,
-            "P shadow enabled: read-only, hold-current commands, "
+            "P shadow enabled: read-only, "
+            f"command_source={p_shadow_command_source}, "
+            f"models={tuple('default' if key is None else key for key in p_shadows)}, "
             f"horizons={tuple(float(value) for value in p_shadow_horizons_s)}s",
         )
     start = time.time()
@@ -427,30 +445,51 @@ def simulate_case(
         onoff_status = getattr(controller, "last_status", {}) if control == "on-off" else {}
 
         p_shadow_record = {}
-        if p_shadow is not None:
+        if p_shadows:
             observed_dynamic = refrigeration_dynamic_state or {}
-            p_shadow_record = p_shadow.forecast(
-                observed_state={
-                    "n_comp_eff_rpm": observed_dynamic.get("N_comp_eff", n_comp_used),
-                    "n_pump_eff_rpm": observed_dynamic.get("N_pump_eff", n_pump_used),
-                    "q_cond_w": observed_dynamic.get("Q_cond_eff", 0.0),
-                    "q_evap_w": observed_dynamic.get("Q_evap_eff", 0.0),
-                    "t_supply_c": observed_dynamic.get("T_pipe_supply_K", t_tank_k) - 273.15,
-                    "t_plate_c": float(np.mean(t_plate_k_array)) - 273.15,
-                    "t_return_c": observed_dynamic.get("T_pipe_return_K", t_tank_k) - 273.15,
-                    "t_batt_c": pack.get_avg_temp() - 273.15,
-                    "t_cool_c": t_tank_k - 273.15,
-                },
-                n_comp_cmd_rpm=n_comp_used,
-                n_pump_cmd_rpm=n_pump_used,
-                q_gen_preview_w=tuple(
-                    battery_heat_generation_w(value)
-                    for value in current_profile[
-                        step_no : step_no + p_shadow.max_forecast_steps
-                    ]
-                ),
-                t_ambient_c=t_outdoor - 273.15,
-            )
+            observed_state = {
+                "n_comp_eff_rpm": observed_dynamic.get("N_comp_eff", n_comp_used),
+                "n_pump_eff_rpm": observed_dynamic.get("N_pump_eff", n_pump_used),
+                "q_cond_w": observed_dynamic.get("Q_cond_eff", 0.0),
+                "q_evap_w": observed_dynamic.get("Q_evap_eff", 0.0),
+                "t_supply_c": observed_dynamic.get("T_pipe_supply_K", t_tank_k) - 273.15,
+                "t_plate_c": float(np.mean(t_plate_k_array)) - 273.15,
+                "t_return_c": observed_dynamic.get("T_pipe_return_K", t_tank_k) - 273.15,
+                "t_batt_c": pack.get_avg_temp() - 273.15,
+                "t_cool_c": t_tank_k - 273.15,
+            }
+            controller_plan = getattr(controller, "last_flow_info", {})
+            n_comp_preview = None
+            n_pump_preview = None
+            if p_shadow_command_source == "mpc_plan":
+                n_comp_preview = controller_plan.get("n_comp_plan_rpm")
+                n_pump_preview = controller_plan.get("n_pump_plan_rpm")
+                if n_comp_preview is None or n_pump_preview is None:
+                    raise RuntimeError("MPC planned command sequence is unavailable")
+            for label, p_shadow in p_shadows.items():
+                shadow_values = p_shadow.forecast(
+                    observed_state=observed_state,
+                    n_comp_cmd_rpm=n_comp_used,
+                    n_pump_cmd_rpm=n_pump_used,
+                    n_comp_cmd_preview_rpm=n_comp_preview,
+                    n_pump_cmd_preview_rpm=n_pump_preview,
+                    q_gen_preview_w=tuple(
+                        battery_heat_generation_w(value)
+                        for value in current_profile[
+                            step_no : step_no + p_shadow.max_forecast_steps
+                        ]
+                    ),
+                    t_ambient_c=t_outdoor - 273.15,
+                )
+                if label is None:
+                    p_shadow_record.update(shadow_values)
+                else:
+                    p_shadow_record.update(
+                        {
+                            key.replace("P_Shadow_", f"P_Shadow_{label}_", 1): value
+                            for key, value in shadow_values.items()
+                        }
+                    )
 
         thermal_step = simulate_thermal_loop_step(
             pack=pack,
@@ -555,7 +594,7 @@ def simulate_case(
             "Ex_Dot_Dest_Aux": thermal_step.get("Ex_dot_dest_aux", np.nan) / 1000.0,
             "Ex_Dot_Loss_Ambient": thermal_step.get("Ex_dot_loss_ambient", np.nan) / 1000.0,
         }
-        if p_shadow is not None:
+        if p_shadows:
             p_shadow_record["P_Shadow_T_Plate_Actual_C"] = (
                 float(np.mean(t_plate_k_array)) - 273.15
             )

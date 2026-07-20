@@ -120,6 +120,25 @@ def load_evaporator_capacity_table(path=DEFAULT_EVAPORATOR_CAPACITY_TABLE_PATH):
     return EvaporatorCapacityTable(n_comp, n_pump, t_cool, q_hx, q_ref)
 
 
+def _planned_control_values(values, executed_command):
+    """Convert a GEKKO MV trajectory into future applied commands."""
+    executed = float(executed_command)
+    try:
+        raw = np.asarray(list(values), dtype=float).reshape(-1)
+    except (TypeError, ValueError):
+        raw = np.asarray([], dtype=float)
+    if raw.size <= 1:
+        return [executed]
+    plan = raw[1:].copy()
+    plan[0] = executed
+    previous = executed
+    for index, value in enumerate(plan):
+        if not np.isfinite(value):
+            plan[index] = previous
+        previous = float(plan[index])
+    return [float(value) for value in plan]
+
+
 def _linear_segment_value(x, x0, x1, y0, y1):
     return y0 + (x - x0) * (y1 - y0) / (x1 - x0)
 
@@ -794,6 +813,14 @@ class MPCControllerDual:
                 "solve_time_s": float(solve_time_s),
                 "solved": True,
             }
+            result["n_comp_plan_rpm"] = _planned_control_values(
+                self.u_ncomp.VALUE,
+                result["n_comp"],
+            )
+            result["n_pump_plan_rpm"] = _planned_control_values(
+                self.u_npump.VALUE,
+                result["n_pump"],
+            )
             t_batt_pred_c = result["t_batt_pred_c"]
             t_cool_pred_c = result["t_cool_pred_c"]
             t_plate_pred_c = np.array(list(self.T_plate.VALUE), dtype=float)
@@ -828,6 +855,8 @@ class MPCControllerDual:
                 "target_temp_c": active_target_temp_c,
                 "solve_time_s": float(solve_time_s),
                 "solved": False,
+                "n_comp_plan_rpm": [float(self.mpc_params.n_comp_min)],
+                "n_pump_plan_rpm": [float(self.mpc_params.n_pump_min)],
                 "raw_track_error_sq": np.nan,
                 "raw_sigma_t_sq": np.nan,
                 "raw_w_comp": np.nan,
@@ -1076,6 +1105,8 @@ class BaseFlowMPCController:
             "qevap_cmd_pred_1_w",
             "qcond_pred_1_w",
             "qevap_pred_1_w",
+            "n_comp_plan_rpm",
+            "n_pump_plan_rpm",
             "terminal_cost_enabled",
             "terminal_cost_type",
             "w_terminal_temp",

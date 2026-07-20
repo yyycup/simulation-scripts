@@ -103,6 +103,8 @@ class PhysicsPShadowPredictor:
         n_pump_cmd_rpm: object,
         q_gen_preview_w: Sequence[float],
         t_ambient_c: object,
+        n_comp_cmd_preview_rpm: Sequence[float] | None = None,
+        n_pump_cmd_preview_rpm: Sequence[float] | None = None,
     ) -> dict[str, object]:
         missing = [name for name in OBSERVED_STATE_FIELDS if name not in observed_state]
         if missing:
@@ -110,25 +112,41 @@ class PhysicsPShadowPredictor:
         preview = tuple(q_gen_preview_w)
         if not preview:
             raise ValueError("q_gen_preview_w must not be empty")
+        if (n_comp_cmd_preview_rpm is None) != (n_pump_cmd_preview_rpm is None):
+            raise ValueError("compressor and pump command previews must be provided together")
+        if n_comp_cmd_preview_rpm is None:
+            comp_preview = (float(n_comp_cmd_rpm),)
+            pump_preview = (float(n_pump_cmd_rpm),)
+            command_assumption = "hold_current"
+        else:
+            comp_preview = tuple(n_comp_cmd_preview_rpm)
+            pump_preview = tuple(n_pump_cmd_preview_rpm)
+            if not comp_preview or not pump_preview:
+                raise ValueError("command previews must not be empty")
+            command_assumption = "provided_plan_hold_last"
 
         state = initialize_physics_state(
             **{name: observed_state[name] for name in OBSERVED_STATE_FIELDS}
         )
         record: dict[str, object] = {
             "P_Shadow_Enabled": 1,
-            "P_Shadow_Command_Assumption": "hold_current",
+            "P_Shadow_Command_Assumption": command_assumption,
             "P_Shadow_Load_Assumption": "provided_preview_hold_last",
             "P_Shadow_Hold_Comp_Command_RPM": float(n_comp_cmd_rpm),
             "P_Shadow_Hold_Pump_Command_RPM": float(n_pump_cmd_rpm),
+            "P_Shadow_Comp_Plan_Length": len(comp_preview),
+            "P_Shadow_Pump_Plan_Length": len(pump_preview),
         }
         started = time.perf_counter()
         horizons_by_step = {steps: horizon for horizon, steps in self.horizon_steps}
         for step_index in range(1, self.max_forecast_steps + 1):
             q_gen = preview[min(step_index - 1, len(preview) - 1)]
+            n_comp_step = comp_preview[min(step_index - 1, len(comp_preview) - 1)]
+            n_pump_step = pump_preview[min(step_index - 1, len(pump_preview) - 1)]
             state = step_physics_predictor(
                 state,
-                n_comp_cmd_rpm=n_comp_cmd_rpm,
-                n_pump_cmd_rpm=n_pump_cmd_rpm,
+                n_comp_cmd_rpm=n_comp_step,
+                n_pump_cmd_rpm=n_pump_step,
                 q_gen_w=q_gen,
                 t_ambient_c=t_ambient_c,
                 dt_s=self.dt_s,

@@ -84,6 +84,31 @@ class PhysicsPShadowPredictorTests(unittest.TestCase):
             battery_heat_generation_w(560.0),
         )
 
+    def test_forecast_uses_planned_commands_and_holds_the_last_value(self):
+        short = self.predictor.forecast(
+            observed_state=self.observed_state,
+            n_comp_cmd_rpm=3000.0,
+            n_pump_cmd_rpm=2400.0,
+            n_comp_cmd_preview_rpm=(3000.0, 4200.0),
+            n_pump_cmd_preview_rpm=(2400.0, 3200.0),
+            q_gen_preview_w=(1000.0,),
+            t_ambient_c=25.0,
+        )
+        extended = self.predictor.forecast(
+            observed_state=self.observed_state,
+            n_comp_cmd_rpm=3000.0,
+            n_pump_cmd_rpm=2400.0,
+            n_comp_cmd_preview_rpm=(3000.0, 4200.0, 4200.0, 4200.0),
+            n_pump_cmd_preview_rpm=(2400.0, 3200.0, 3200.0, 3200.0),
+            q_gen_preview_w=(1000.0,),
+            t_ambient_c=25.0,
+        )
+
+        self.assertEqual(short["P_Shadow_Command_Assumption"], "provided_plan_hold_last")
+        for key in short:
+            if "_Pred_" in key:
+                self.assertAlmostEqual(short[key], extended[key])
+
 
 if __name__ == "__main__":
     unittest.main()
