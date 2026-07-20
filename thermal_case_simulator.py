@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 
 from age_model import AgingModel280Ah
+from mpc_physics_shadow import PhysicsPShadowPredictor, battery_heat_generation_w
 from thermal_control_strategies import create_controller
 from pack import BatteryPack
 from thermal_batch_config import (
@@ -266,6 +267,8 @@ def simulate_case(
     result_tag=None,
     current_profile_override=None,
     pid_params=None,
+    p_shadow_artifact=None,
+    p_shadow_horizons_s=(50.0, 100.0, 300.0),
     log_func=None,
 ):
     output_root = Path(output_root)
@@ -363,6 +366,18 @@ def simulate_case(
         refrigeration_dynamic_state = None
     history = []
     snapshots = []
+    p_shadow = None
+    if p_shadow_artifact is not None:
+        p_shadow = PhysicsPShadowPredictor(
+            p_shadow_artifact,
+            dt_s=dt,
+            horizons_s=p_shadow_horizons_s,
+        )
+        _emit(
+            log_func,
+            "P shadow enabled: read-only, hold-current commands, "
+            f"horizons={tuple(float(value) for value in p_shadow_horizons_s)}s",
+        )
     start = time.time()
 
     _emit(log_func, f"START {control} {scene} {flow} steps={n_steps} soc0={pack_config['initial_soc']}")
@@ -410,6 +425,32 @@ def simulate_case(
             is_reversed = controller.is_reversed
             last_reverse_t = getattr(controller, "last_switch_time", last_reverse_t)
         onoff_status = getattr(controller, "last_status", {}) if control == "on-off" else {}
+
+        p_shadow_record = {}
+        if p_shadow is not None:
+            observed_dynamic = refrigeration_dynamic_state or {}
+            p_shadow_record = p_shadow.forecast(
+                observed_state={
+                    "n_comp_eff_rpm": observed_dynamic.get("N_comp_eff", n_comp_used),
+                    "n_pump_eff_rpm": observed_dynamic.get("N_pump_eff", n_pump_used),
+                    "q_cond_w": observed_dynamic.get("Q_cond_eff", 0.0),
+                    "q_evap_w": observed_dynamic.get("Q_evap_eff", 0.0),
+                    "t_supply_c": observed_dynamic.get("T_pipe_supply_K", t_tank_k) - 273.15,
+                    "t_plate_c": float(np.mean(t_plate_k_array)) - 273.15,
+                    "t_return_c": observed_dynamic.get("T_pipe_return_K", t_tank_k) - 273.15,
+                    "t_batt_c": pack.get_avg_temp() - 273.15,
+                    "t_cool_c": t_tank_k - 273.15,
+                },
+                n_comp_cmd_rpm=n_comp_used,
+                n_pump_cmd_rpm=n_pump_used,
+                q_gen_preview_w=tuple(
+                    battery_heat_generation_w(value)
+                    for value in current_profile[
+                        step_no : step_no + p_shadow.max_forecast_steps
+                    ]
+                ),
+                t_ambient_c=t_outdoor - 273.15,
+            )
 
         thermal_step = simulate_thermal_loop_step(
             pack=pack,
@@ -514,6 +555,11 @@ def simulate_case(
             "Ex_Dot_Dest_Aux": thermal_step.get("Ex_dot_dest_aux", np.nan) / 1000.0,
             "Ex_Dot_Loss_Ambient": thermal_step.get("Ex_dot_loss_ambient", np.nan) / 1000.0,
         }
+        if p_shadow is not None:
+            p_shadow_record["P_Shadow_T_Plate_Actual_C"] = (
+                float(np.mean(t_plate_k_array)) - 273.15
+            )
+        record.update(p_shadow_record)
         if onoff_status:
             record["OnOff_State"] = onoff_status.get("state", np.nan)
             record["OnOff_T_Avg_C"] = onoff_status.get("T_avg_C", np.nan)
