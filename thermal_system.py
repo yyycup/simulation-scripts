@@ -1,7 +1,14 @@
 ﻿import numpy as np
 import CoolProp.CoolProp as CP
 from scipy.interpolate import RegularGridInterpolator
-from thermal_batch_config import EVAP_CAP_FACTOR, EVAP_FLOW_EXP, EVAP_UA_FACTOR
+from thermal_batch_config import (
+    COMPRESSOR_MAP_MIN_RPM,
+    COMPRESSOR_MIN_STEADY_RPM,
+    EVAP_CAP_FACTOR,
+    EVAP_FLOW_EXP,
+    EVAP_UA_FACTOR,
+    N_COMP_OFF_RPM,
+)
 
 # --- CoolProp 鍜屽埗鍐峰墏瀹氫箟 ---
 PropsSI = CP.PropsSI
@@ -53,6 +60,8 @@ eta_is_interpolator = RegularGridInterpolator((speed_axis, pr_axis), eta_is_map,
 eta_mech = 0.9134570767518371
 # Compressor displacement set directly in physical units: 5.525 cm^3/rev.
 V_disp_m3_per_rev = 5.525e-06
+ETA_VOL_EXTRAPOLATION_BOUNDS = (0.25, 0.99)
+ETA_IS_EXTRAPOLATION_BOUNDS = (0.20, 0.80)
 
 # 鍐锋澘涓庢崲鐑櫒鍙傛暟
 N_bp = 13
@@ -411,30 +420,101 @@ def fan_model(N_fan_rpm):
     return max(0.0, W_fan_max_power * (N_fan_rpm_clamped / N_fan_max_rpm) ** 3)
 
 
+def compressor_efficiencies(N_rpm, pressure_ratio):
+    """Return bounded map efficiencies, with a marked low-speed extrapolation.
+
+    The measured map starts at 2000 rpm. Between 1000 and 2000 rpm the first
+    map segment is extended linearly in speed; pressure ratio remains clamped
+    to the measured map domain. This is an explicit engineering assumption,
+    not a replacement for future low-speed compressor measurements.
+    """
+    speed_for_efficiency = float(
+        np.clip(N_rpm, COMPRESSOR_MIN_STEADY_RPM, speed_axis.max())
+    )
+    pressure_ratio_for_map = float(
+        np.clip(pressure_ratio, pr_axis.min(), pr_axis.max())
+    )
+    point = np.array([speed_for_efficiency, pressure_ratio_for_map])
+    try:
+        eta_vol = float(eta_vol_interpolator(point)[0])
+        eta_is_actual = float(eta_is_interpolator(point)[0])
+    except Exception:
+        eta_vol, eta_is_actual = 0.8, 0.6
+    eta_vol = float(np.clip(eta_vol, *ETA_VOL_EXTRAPOLATION_BOUNDS))
+    eta_is_actual = float(np.clip(eta_is_actual, *ETA_IS_EXTRAPOLATION_BOUNDS))
+    return {
+        "eta_vol": eta_vol,
+        "eta_is": eta_is_actual,
+        "speed_for_efficiency_rpm": speed_for_efficiency,
+        "pressure_ratio_for_map": pressure_ratio_for_map,
+        "low_speed_extrapolated": speed_for_efficiency < COMPRESSOR_MAP_MIN_RPM,
+        "efficiency_source": (
+            "linear_extrapolation_from_2000_3000_rpm"
+            if speed_for_efficiency < COMPRESSOR_MAP_MIN_RPM
+            else "measured_map_interpolation"
+        ),
+    }
+
+
+def _compressor_flow_speed_rpm(N_rpm):
+    """Map the off-to-minimum-speed actuator transition to continuous flow."""
+    speed = float(N_rpm)
+    if speed <= N_COMP_OFF_RPM:
+        return 0.0, 0.0
+    if speed >= COMPRESSOR_MIN_STEADY_RPM:
+        return speed, 1.0
+    startup_fraction = (speed - N_COMP_OFF_RPM) / (
+        COMPRESSOR_MIN_STEADY_RPM - N_COMP_OFF_RPM
+    )
+    return COMPRESSOR_MIN_STEADY_RPM * startup_fraction, startup_fraction
+
+
 def compressor_model(p_suc, T_suc, p_dis, N_rpm):
     rho_suc = safe_PropsSI("Dmass", "P", p_suc, "T", T_suc, REF)
-    if np.isnan(rho_suc) or rho_suc <= 0: return {"mdot": 0.0, "h_out": np.nan, "W_dot_elec": 0.0}
+    if np.isnan(rho_suc) or rho_suc <= 0:
+        return {
+            "mdot": 0.0,
+            "h_out": np.nan,
+            "W_dot_elec": 0.0,
+            "eta_vol": 0.0,
+            "eta_is": 0.0,
+            "speed_for_efficiency_rpm": 0.0,
+            "pressure_ratio_for_map": np.nan,
+            "low_speed_extrapolated": False,
+            "efficiency_source": "invalid_suction_state",
+            "flow_speed_rpm": 0.0,
+            "startup_fraction": 0.0,
+        }
     if p_suc <= 0: p_suc = 1e3
     pr = max(1.0, p_dis / p_suc)
-
-    N_clip = np.clip(N_rpm, speed_axis.min(), speed_axis.max())
-    pr_clip = np.clip(pr, pr_axis.min(), pr_axis.max())
-    pt = np.array([N_clip, pr_clip])
-    try:
-        eta_vol = eta_vol_interpolator(pt)[0]
-        eta_is_actual = eta_is_interpolator(pt)[0]
-    except:
-        eta_vol, eta_is_actual = 0.8, 0.6
-
-    mdot = rho_suc * eta_vol * V_disp_m3_per_rev * (N_rpm / 60.0)
+    efficiency = compressor_efficiencies(N_rpm, pr)
+    eta_vol = efficiency["eta_vol"]
+    eta_is_actual = efficiency["eta_is"]
+    flow_speed_rpm, startup_fraction = _compressor_flow_speed_rpm(N_rpm)
+    mdot = rho_suc * eta_vol * V_disp_m3_per_rev * (flow_speed_rpm / 60.0)
     h1 = safe_PropsSI("Hmass", "P", p_suc, "T", T_suc, REF)
     s1 = safe_PropsSI("Smass", "P", p_suc, "T", T_suc, REF)
     h2s = safe_PropsSI("Hmass", "P", p_dis, "Smass", s1, REF)
 
-    if np.isnan(h1) or np.isnan(h2s): return {"mdot": mdot, "h_out": np.nan, "W_dot_elec": 0.0}
+    if np.isnan(h1) or np.isnan(h2s):
+        return {
+            "mdot": mdot,
+            "h_out": np.nan,
+            "W_dot_elec": 0.0,
+            **efficiency,
+            "flow_speed_rpm": flow_speed_rpm,
+            "startup_fraction": startup_fraction,
+        }
 
     h2 = h1 + (h2s - h1) / max(eta_is_actual, 1e-3)
-    return {"mdot": mdot, "h_out": h2, "W_dot_elec": mdot * (h2 - h1) / eta_mech}
+    return {
+        "mdot": mdot,
+        "h_out": h2,
+        "W_dot_elec": mdot * (h2 - h1) / eta_mech,
+        **efficiency,
+        "flow_speed_rpm": flow_speed_rpm,
+        "startup_fraction": startup_fraction,
+    }
 
 
 def radiator_along(T_cool_in, T_air_in, m_dot_cool):
@@ -696,7 +776,7 @@ def _run_refrigeration_cycle_uncached(
     if N_rpm_comp is None or N_rpm_fan is None or T_cool_in is None or m_dot_cool is None:
         raise TypeError("run_refrigeration_cycle requires compressor speed, fan speed, coolant inlet temperature, and coolant flow")
 
-    if N_rpm_comp < speed_axis.min():
+    if N_rpm_comp <= N_COMP_OFF_RPM:
         T_evap_sat = float(np.clip(T_cool_in - 5.0, T_EVAP_SAT_RATED_K, max(T_EVAP_SAT_RATED_K + 1.0, T_cool_in - 0.5)))
         T_cond_sat = float(np.clip(T_outdoor + 5.0, T_evap_sat + 5.0, T_COND_SAT_RATED_K))
         p_evap = p_sat_from_T(T_evap_sat)
@@ -718,6 +798,11 @@ def _run_refrigeration_cycle_uncached(
             "E_D_comp": 0.0, "E_D_evap": 0.0, "E_D_cond": 0.0, "E_D_exp": 0.0,
             "E_D_total": 0.0, "E_D_comp_ratio": 0.0, "E_D_evap_ratio": 0.0,
             "E_D_cond_ratio": 0.0, "E_D_exp_ratio": 0.0,
+            "compressor_eta_vol": 0.0, "compressor_eta_is": 0.0,
+            "compressor_flow_speed_rpm": 0.0,
+            "compressor_startup_fraction": 0.0,
+            "compressor_low_speed_extrapolated": False,
+            "compressor_efficiency_source": "off",
         }
 
     W_fan = fan_model(N_rpm_fan)
@@ -800,6 +885,12 @@ def _run_refrigeration_cycle_uncached(
         "T_suc_after_acc": acc["T_out"], "h_suc_after_acc": acc["h_out"],
         "liquid_hold_rate": acc["liquid_hold_rate"],
         "risk_liquid_slugging": acc["risk_liquid_slugging"],
+        "compressor_eta_vol": comp["eta_vol"],
+        "compressor_eta_is": comp["eta_is"],
+        "compressor_flow_speed_rpm": comp["flow_speed_rpm"],
+        "compressor_startup_fraction": comp["startup_fraction"],
+        "compressor_low_speed_extrapolated": comp["low_speed_extrapolated"],
+        "compressor_efficiency_source": comp["efficiency_source"],
         **exergy_metrics,
     }
 

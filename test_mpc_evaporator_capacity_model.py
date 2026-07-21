@@ -8,7 +8,6 @@ from unittest.mock import patch
 from mpc_evaporator_capacity_model import (
     evaluate_capacity,
     load_capacity_calibration,
-    smooth_mpc_power_gate,
 )
 from run_evaporator_mpc_capacity_diagnostic import build_comparison
 from run_mpc_evaporator_capacity_calibration import (
@@ -26,8 +25,8 @@ class MpcEvaporatorCapacityModelTest(unittest.TestCase):
             "coefficients": {"b0": 0.2, "b1": 0.1, "b2": 0.01},
             "n_pump_ref_rpm": 2000.0,
             "q_evap_upper_bound_w": 5000.0,
-            "minimum_active_rpm": 2000.0,
-            "mpc_power_gate": {"center_rpm": 1950.0, "width_rpm": 10.0},
+            "compressor_off_rpm": 300.0,
+            "minimum_steady_rpm": 1000.0,
         }
 
     def test_candidate_b_uses_pump_ratio_and_coolant_temperature(self):
@@ -42,24 +41,26 @@ class MpcEvaporatorCapacityModelTest(unittest.TestCase):
 
         self.assertAlmostEqual(value, 2400.0)
 
-    def test_candidate_b_is_off_below_physical_compressor_map(self):
+    def test_candidate_b_is_off_at_300_and_active_below_original_map(self):
         calibration = self._candidate_b_calibration()
 
         self.assertEqual(
-            evaluate_capacity(calibration, 1999.0, 2400.0, 25.0),
+            evaluate_capacity(calibration, 300.0, 2400.0, 25.0),
             0.0,
         )
         self.assertGreater(
-            evaluate_capacity(calibration, 2000.0, 2400.0, 25.0),
+            evaluate_capacity(calibration, 1000.0, 2400.0, 25.0),
             0.0,
         )
 
-    def test_mpc_power_gate_smoothly_approximates_the_2000_rpm_hard_boundary(self):
+    def test_candidate_b_startup_transition_is_continuous(self):
         calibration = self._candidate_b_calibration()
+        at_1000 = evaluate_capacity(calibration, 1000.0, 2400.0, 25.0)
 
-        self.assertLess(smooth_mpc_power_gate(calibration, 1900.0), 0.02)
-        self.assertAlmostEqual(smooth_mpc_power_gate(calibration, 1950.0), 0.5)
-        self.assertGreater(smooth_mpc_power_gate(calibration, 2000.0), 0.99)
+        self.assertAlmostEqual(
+            evaluate_capacity(calibration, 650.0, 2400.0, 25.0),
+            0.5 * at_1000,
+        )
 
     def test_canonical_candidate_b_covers_15c_with_holdout_temperatures(self):
         calibration = load_capacity_calibration()
@@ -72,10 +73,10 @@ class MpcEvaporatorCapacityModelTest(unittest.TestCase):
         )
         self.assertEqual(tuple(calibration["data_range"]["T_cool_in_C"]), T_COOL_ALL)
         self.assertTrue(calibration["validation_target_met"])
-        self.assertEqual(
-            calibration["optimizer_low_speed_policy"]["capacity"],
-            "continuous_relaxation_for_nlp",
-        )
+        self.assertEqual(min(calibration["data_range"]["N_comp_rpm"]), 1000.0)
+        self.assertEqual(calibration["compressor_off_rpm"], 300.0)
+        self.assertEqual(calibration["minimum_steady_rpm"], 1000.0)
+        self.assertIn("without_measurements", calibration["low_speed_model"]["validation_status"])
 
     def test_capacity_is_bounded_nonnegative(self):
         calibration = {

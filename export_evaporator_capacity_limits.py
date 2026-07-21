@@ -48,7 +48,7 @@ def build_limits_grid():
 def main():
     out = (
         Path("outputs")
-        / "mpc_evaporator_capacity_candidate_b_15c"
+        / "mpc_evaporator_capacity_candidate_b_15c_1000rpm"
         / "candidate_b_capacity_limits_grid.csv"
     )
     out.parent.mkdir(parents=True, exist_ok=True)

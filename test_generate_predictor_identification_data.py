@@ -764,7 +764,7 @@ class GeneratePredictorIdentificationDataTest(unittest.TestCase):
         run_cycle.return_value = result
 
         row = generate_steady_rows(
-            [(1999.0, 1600.0, 25.0, 35.0)]
+            [(300.0, 1600.0, 25.0, 35.0)]
         )[0]
 
         self.assertEqual(row["q_hx_potential_w"], 0.0)
@@ -773,16 +773,16 @@ class GeneratePredictorIdentificationDataTest(unittest.TestCase):
     @patch("generate_predictor_identification_data.run_refrigeration_cycle")
     @patch("generate_predictor_identification_data.staged_fan_speed")
     @patch("generate_predictor_identification_data.pump_model")
-    def test_steady_row_preserves_the_1999_2000_boundary(
+    def test_steady_row_preserves_the_off_1000_boundary(
         self, pump_model, staged_fan_speed, run_cycle
     ):
         pump_model.return_value = (0.25, 20.0)
         staged_fan_speed.side_effect = lambda n_comp: (
-            0.0 if n_comp < 2000.0 else 800.0
+            0.0 if n_comp <= 300.0 else 800.0
         )
         run_cycle.side_effect = lambda n_comp, *_args, **_kwargs: {
-            "Q_evap": 0.0 if n_comp < 2000.0 else 900.0,
-            "Q_cond": 0.0 if n_comp < 2000.0 else 1200.0,
+            "Q_evap": 0.0 if n_comp <= 300.0 else 900.0,
+            "Q_cond": 0.0 if n_comp <= 300.0 else 1200.0,
             "Q_hx_potential": 900.0,
             "Q_ref_max": 1000.0,
             "W_comp": 100.0,
@@ -792,8 +792,8 @@ class GeneratePredictorIdentificationDataTest(unittest.TestCase):
 
         rows = generate_steady_rows(
             [
-                (1999.0, 1600.0, 25.0, 35.0),
-                (2000.0, 1600.0, 25.0, 35.0),
+                (300.0, 1600.0, 25.0, 35.0),
+                (1000.0, 1600.0, 25.0, 35.0),
             ]
         )
 
@@ -801,14 +801,14 @@ class GeneratePredictorIdentificationDataTest(unittest.TestCase):
         self.assertEqual(
             [row["scenario_id"] for row in rows],
             [
-                "steady_nc1999_np1600_tc25_ta35",
-                "steady_nc2000_np1600_tc25_ta35",
+                "steady_nc300_np1600_tc25_ta35",
+                "steady_nc1000_np1600_tc25_ta35",
             ],
         )
         self.assertEqual(run_cycle.call_count, 2)
         self.assertEqual(
             run_cycle.call_args_list[1].args,
-            (2000.0, 800.0, 298.15, 0.25, 308.15),
+            (1000.0, 800.0, 298.15, 0.25, 308.15),
         )
         self.assertTrue(set(REQUIRED_COLUMNS).issubset(rows[0]))
         self.assertEqual(rows[0]["limit_type"], "compressor_off")
@@ -1385,7 +1385,7 @@ class DynamicRolloutTest(unittest.TestCase):
     ):
         battery_pack.side_effect = self.FakePack
         thermal_result = self._thermal_result()
-        thermal_result["N_comp_eff"] = 1900.0
+        thermal_result["N_comp_eff"] = 300.0
         simulate_step.return_value = thermal_result
         cycle_result = self._cycle_result()
         cycle_result.update({"Q_evap": 0.0, "Q_cond": 0.0, "W_comp": 0.0})

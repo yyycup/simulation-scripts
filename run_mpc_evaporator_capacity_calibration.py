@@ -16,35 +16,28 @@ import pandas as pd
 from mpc_evaporator_capacity_model import evaluate_capacity
 from thermal_batch_config import (
     AMBIENT_TEMP_K,
+    COMPRESSOR_MAP_MIN_RPM,
+    COMPRESSOR_MIN_STEADY_RPM,
     EVAP_CAP_FACTOR,
     EVAP_FLOW_EXP,
     EVAP_UA_FACTOR,
+    N_COMP_OFF_RPM,
 )
 from thermal_loop import staged_fan_speed
 from thermal_system import (
-    REF,
-    chiller_model_NTU,
-    compressor_model,
-    condenser_model_NTU,
-    p_sat_from_T,
     pump_model,
-    safe_PropsSI,
-    solve_saturation_temperatures,
-    superheat_desired,
+    run_refrigeration_cycle,
 )
 
 
-OUT = Path("outputs") / "mpc_evaporator_capacity_candidate_b_15c"
-N_COMP = (2000.0, 3000.0, 4000.0, 5000.0, 6000.0)
+OUT = Path("outputs") / "mpc_evaporator_capacity_candidate_b_15c_1000rpm"
+N_COMP = (1000.0, 1250.0, 1500.0, 1750.0, 2000.0, 3000.0, 4000.0, 5000.0, 6000.0)
 N_PUMP = (1600.0, 2400.0, 3200.0, 4000.0, 4800.0)
 T_COOL_TRAIN = (15.0, 20.0, 25.0, 30.0, 35.0)
 T_COOL_VALIDATION = (17.5, 22.5, 27.5, 32.5)
 T_COOL_ALL = tuple(sorted((*T_COOL_TRAIN, *T_COOL_VALIDATION)))
 # Backward-compatible name used by the small grid-export helper.
 T_COOL = T_COOL_ALL
-MINIMUM_ACTIVE_RPM = 2000.0
-MPC_GATE_CENTER_RPM = 1950.0
-MPC_GATE_WIDTH_RPM = 10.0
 FIT_WEIGHT_POWER = 0.3
 VALIDATION_MAPE_TARGET_PERCENT = 10.0
 VALIDATION_MAX_RELATIVE_ERROR_TARGET_PERCENT = 20.0
@@ -52,26 +45,16 @@ VALIDATION_MAX_RELATIVE_ERROR_TARGET_PERCENT = 20.0
 
 def plant_point(n_comp, n_pump, t_cool_c):
     m_cool, _ = pump_model(n_pump)
-    t_cool = t_cool_c + 273.15
     n_fan = staged_fan_speed(n_comp)
-    t_evap, t_cond = solve_saturation_temperatures(
+    result = run_refrigeration_cycle(
         n_comp,
         n_fan,
-        t_cool,
+        t_cool_c + 273.15,
         m_cool,
         AMBIENT_TEMP_K,
     )
-    p_evap, p_cond = p_sat_from_T(t_evap), p_sat_from_T(t_cond)
-    t_suc = safe_PropsSI("T", "P", p_evap, "Q", 1.0, REF) + superheat_desired
-    comp = compressor_model(p_evap, t_suc, p_cond, n_comp)
-    cond = condenser_model_NTU(
-        comp["mdot"], comp["h_out"], p_cond, n_fan, AMBIENT_TEMP_K
-    )
-    chiller = chiller_model_NTU(
-        comp["mdot"], p_evap, cond["h_cond_out"], t_cool, m_cool
-    )
-    limit = "Q_hx" if chiller["Q_hx_potential"] <= chiller["Q_ref_max"] else "Q_ref_max"
-    return chiller["Q_evap"], limit
+    limit = "Q_hx" if result["Q_hx_potential"] <= result["Q_ref_max"] else "Q_ref_max"
+    return result["Q_evap"], limit, result["compressor_efficiency_source"]
 
 
 def build_grid():
@@ -79,7 +62,7 @@ def build_grid():
     for n_comp in N_COMP:
         for n_pump in N_PUMP:
             for t_cool in T_COOL_ALL:
-                q_evap, limit = plant_point(n_comp, n_pump, t_cool)
+                q_evap, limit, compressor_source = plant_point(n_comp, n_pump, t_cool)
                 rows.append(
                     {
                         "N_comp_rpm": n_comp,
@@ -87,6 +70,7 @@ def build_grid():
                         "T_cool_in_C": t_cool,
                         "Q_evap_plant_W": q_evap,
                         "limit_type": limit,
+                        "compressor_model_source": compressor_source,
                         "split": (
                             "train" if t_cool in T_COOL_TRAIN else "validation"
                         ),
@@ -141,16 +125,12 @@ def fit_calibration(frame, kind, q_upper_w):
         "coefficients": dict(zip(coefficient_names(kind), map(float, beta))),
         "n_pump_ref_rpm": 2000.0,
         "q_evap_upper_bound_w": float(q_upper_w),
-        "minimum_active_rpm": MINIMUM_ACTIVE_RPM,
-        "mpc_power_gate": {
-            "kind": "algebraic_sqrt",
-            "center_rpm": MPC_GATE_CENTER_RPM,
-            "width_rpm": MPC_GATE_WIDTH_RPM,
-        },
-        "optimizer_low_speed_policy": {
-            "capacity": "continuous_relaxation_for_nlp",
-            "power": "algebraic_sqrt_gate",
-            "physical_execution": "hard_off_below_minimum_active_rpm",
+        "compressor_off_rpm": N_COMP_OFF_RPM,
+        "minimum_steady_rpm": COMPRESSOR_MIN_STEADY_RPM,
+        "startup_transition": {
+            "kind": "linear_flow_blend",
+            "from_rpm": N_COMP_OFF_RPM,
+            "to_rpm": COMPRESSOR_MIN_STEADY_RPM,
         },
     }
 
@@ -233,13 +213,23 @@ def main():
 
     calibration.update(
         {
-            "evaporator_model_version": "candidate B 15C",
+            "evaporator_model_version": "candidate B 15C 1000rpm",
             "EVAP_UA_FACTOR": EVAP_UA_FACTOR,
             "EVAP_FLOW_EXP": EVAP_FLOW_EXP,
             "EVAP_CAP_FACTOR": EVAP_CAP_FACTOR,
             "calibration_date": str(date.today()),
             "selection_method": "temperature_holdout_then_refit_all_nodes",
             "fit_weight_power": FIT_WEIGHT_POWER,
+            "low_speed_model": {
+                "map_min_rpm": COMPRESSOR_MAP_MIN_RPM,
+                "steady_extrapolation_min_rpm": COMPRESSOR_MIN_STEADY_RPM,
+                "efficiency_method": "bounded_linear_extrapolation_from_2000_3000_rpm",
+                "validation_status": "physics_constrained_extrapolation_without_measurements",
+                "references": [
+                    "https://doi.org/10.1016/j.applthermaleng.2008.03.016",
+                    "https://doi.org/10.1016/j.applthermaleng.2012.08.041",
+                ],
+            },
             "data_range": {
                 "N_comp_rpm": list(N_COMP),
                 "N_pump_rpm": list(N_PUMP),

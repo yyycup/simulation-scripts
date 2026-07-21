@@ -33,6 +33,7 @@ from thermal_batch_config import (
     EVAP_UA_FACTOR,
     N_COMP_MAX_RPM,
     N_COMP_MIN_RPM,
+    N_COMP_OFF_RPM,
     N_PUMP_MAX_RPM,
     N_PUMP_MIN_RPM,
 )
@@ -680,7 +681,7 @@ def generate_steady_rows(points, seed=20260714):
         t_cond_sat = _required_finite_cycle_value(
             cycle, "T_cond_sat", scenario_id
         )
-        if n_comp < N_COMP_MIN_RPM:
+        if n_comp <= N_COMP_OFF_RPM:
             q_hx_potential = _off_capacity_limit(
                 cycle, "Q_hx_potential", scenario_id
             )
@@ -1038,7 +1039,7 @@ def run_dynamic_scenario(spec, split="train"):
         t_cond_sat_k = _required_finite_cycle_value(
             cycle, "T_cond_sat", diagnostic_context
         )
-        if n_comp_eff < N_COMP_MIN_RPM:
+        if n_comp_eff <= N_COMP_OFF_RPM:
             q_hx_potential = _off_capacity_limit(
                 cycle, "Q_hx_potential", diagnostic_context
             )

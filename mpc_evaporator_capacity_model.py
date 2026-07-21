@@ -1,7 +1,6 @@
 """Bounded steady evaporator-capacity surrogates for the MPC reduced model."""
 
 import json
-import math
 from pathlib import Path
 
 
@@ -10,9 +9,8 @@ DEFAULT_CALIBRATION_PATH = (
     / "model_data"
     / "mpc_evaporator_capacity_candidate_b.json"
 )
-DEFAULT_MINIMUM_ACTIVE_RPM = 2000.0
-DEFAULT_MPC_POWER_GATE_CENTER_RPM = 1950.0
-DEFAULT_MPC_POWER_GATE_WIDTH_RPM = 10.0
+DEFAULT_COMPRESSOR_OFF_RPM = 300.0
+DEFAULT_MINIMUM_STEADY_RPM = 1000.0
 
 
 def load_capacity_calibration(path=DEFAULT_CALIBRATION_PATH):
@@ -20,28 +18,31 @@ def load_capacity_calibration(path=DEFAULT_CALIBRATION_PATH):
         return json.load(handle)
 
 
-def minimum_active_rpm(calibration):
-    default = (
-        DEFAULT_MINIMUM_ACTIVE_RPM
-        if calibration.get("model_type") == "candidate_b"
-        else 0.0
-    )
-    return float(calibration.get("minimum_active_rpm", default))
+def compressor_off_rpm(calibration):
+    if "compressor_off_rpm" in calibration:
+        return float(calibration["compressor_off_rpm"])
+    if "minimum_active_rpm" in calibration:
+        return float(calibration["minimum_active_rpm"])
+    return DEFAULT_COMPRESSOR_OFF_RPM if calibration.get("model_type") == "candidate_b" else 0.0
 
 
-def mpc_power_gate_parameters(calibration):
-    gate = calibration.get("mpc_power_gate", {})
-    center = float(gate.get("center_rpm", DEFAULT_MPC_POWER_GATE_CENTER_RPM))
-    width = float(gate.get("width_rpm", DEFAULT_MPC_POWER_GATE_WIDTH_RPM))
-    if width <= 0.0:
-        raise ValueError("mpc_power_gate.width_rpm must be greater than zero")
-    return center, width
+def minimum_steady_rpm(calibration):
+    if "minimum_steady_rpm" in calibration:
+        return float(calibration["minimum_steady_rpm"])
+    if "minimum_active_rpm" in calibration:
+        return float(calibration["minimum_active_rpm"])
+    return DEFAULT_MINIMUM_STEADY_RPM if calibration.get("model_type") == "candidate_b" else 0.0
 
 
-def smooth_mpc_power_gate(calibration, n_comp_rpm):
-    center, width = mpc_power_gate_parameters(calibration)
-    offset = float(n_comp_rpm) - center
-    return 0.5 * (1.0 + offset / math.sqrt(offset**2 + width**2))
+def startup_fraction(calibration, n_comp_rpm):
+    off_rpm = compressor_off_rpm(calibration)
+    steady_rpm = minimum_steady_rpm(calibration)
+    speed = float(n_comp_rpm)
+    if speed <= off_rpm:
+        return 0.0
+    if speed >= steady_rpm or steady_rpm <= off_rpm:
+        return 1.0
+    return (speed - off_rpm) / (steady_rpm - off_rpm)
 
 
 def raw_capacity(calibration, n_comp_rpm, n_pump_rpm, t_cool_c):
@@ -58,6 +59,12 @@ def raw_capacity(calibration, n_comp_rpm, n_pump_rpm, t_cool_c):
 
 
 def evaluate_capacity(calibration, n_comp_rpm, n_pump_rpm, t_cool_c):
-    if float(n_comp_rpm) < minimum_active_rpm(calibration):
+    fraction = startup_fraction(calibration, n_comp_rpm)
+    if fraction <= 0.0:
         return 0.0
-    return max(0.0, min(float(calibration["q_evap_upper_bound_w"]), float(raw_capacity(calibration, n_comp_rpm, n_pump_rpm, t_cool_c))))
+    steady_rpm = minimum_steady_rpm(calibration)
+    capacity_speed = max(float(n_comp_rpm), steady_rpm)
+    capacity = fraction * raw_capacity(
+        calibration, capacity_speed, n_pump_rpm, t_cool_c
+    )
+    return max(0.0, min(float(calibration["q_evap_upper_bound_w"]), float(capacity)))

@@ -10,6 +10,7 @@ from thermal_batch_config import (
     MPC_REV_W_DELTA_T,
     MPC_REV_W_GAMMA_HOT,
     MPC_REV_W_H_DOWN,
+    N_COMP_OFF_RPM,
     SIM_DT,
 )
 from thermal_system import (
@@ -336,7 +337,7 @@ class SupervisoryFlowController:
 
 def staged_fan_speed(N_comp_rpm):
     """Independent four-stage condenser fan command, decoupled from compressor speed."""
-    if N_comp_rpm < 2000.0:
+    if N_comp_rpm <= N_COMP_OFF_RPM:
         return 0.0
     if N_comp_rpm <= 3500.0:
         return 800.0
