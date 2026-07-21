@@ -6,6 +6,10 @@ import math
 from numbers import Real
 from pathlib import Path
 
+import btms_runtime
+
+btms_runtime.ensure_env_library_bin_on_path()
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -27,7 +31,17 @@ from thermal_loop import staged_fan_speed
 from thermal_system import pump_model, run_refrigeration_cycle
 
 
-DEFAULT_SPEEDS_RPM = (2000.0, 3000.0, 4000.0, 5000.0, 6000.0)
+DEFAULT_SPEEDS_RPM = (
+    1000.0,
+    1500.0,
+    1900.0,
+    1999.0,
+    2000.0,
+    3000.0,
+    4000.0,
+    5000.0,
+    6000.0,
+)
 
 
 def _validate_candidate_b_calibration(calibration, artifact_path):
@@ -89,6 +103,18 @@ def build_comparison(
             f"Candidate B artifact {calibration_path}: unable to load: {exc}"
         ) from exc
     calibration = _validate_candidate_b_calibration(calibration, calibration_path)
+    temperature_domain = calibration.get("data_range", {}).get("T_cool_in_C", ())
+    if temperature_domain:
+        domain_min_c = float(min(temperature_domain))
+        domain_max_c = float(max(temperature_domain))
+    else:
+        domain_min_c = np.nan
+        domain_max_c = np.nan
+    coolant_in_calibrated_domain = bool(
+        np.isfinite(domain_min_c)
+        and np.isfinite(domain_max_c)
+        and domain_min_c <= float(coolant_temp_c) <= domain_max_c
+    )
     m_dot_cool, _pump_power = pump_model(float(n_pump_rpm))
     rows = []
     for n_comp_rpm in n_comp_values:
@@ -117,6 +143,7 @@ def build_comparison(
                 "Q_evap_mpc_W": q_mpc_w,
                 "error_W": error_w,
                 "relative_error_percent": relative_error_percent,
+                "coolant_in_calibrated_domain": coolant_in_calibrated_domain,
             }
         )
     frame = pd.DataFrame(rows)

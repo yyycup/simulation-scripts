@@ -1,17 +1,30 @@
 {
   "model_type": "candidate_b",
   "coefficients": {
-    "b0": 0.6325437453783026,
-    "b1": -0.11950333055516761,
-    "b2": 0.016338589131824885
+    "b0": 0.6205275119697288,
+    "b1": -0.09778165866467825,
+    "b2": 0.015081508309281712
   },
   "n_pump_ref_rpm": 2000.0,
   "q_evap_upper_bound_w": 4723.151827216717,
-  "evaporator_model_version": "candidate B",
+  "minimum_active_rpm": 2000.0,
+  "mpc_power_gate": {
+    "kind": "algebraic_sqrt",
+    "center_rpm": 1950.0,
+    "width_rpm": 10.0
+  },
+  "optimizer_low_speed_policy": {
+    "capacity": "continuous_relaxation_for_nlp",
+    "power": "algebraic_sqrt_gate",
+    "physical_execution": "hard_off_below_minimum_active_rpm"
+  },
+  "evaporator_model_version": "candidate B 15C",
   "EVAP_UA_FACTOR": 2.0,
   "EVAP_FLOW_EXP": 1.2,
   "EVAP_CAP_FACTOR": 1.5,
-  "calibration_date": "2026-07-12",
+  "calibration_date": "2026-07-21",
+  "selection_method": "temperature_holdout_then_refit_all_nodes",
+  "fit_weight_power": 0.3,
   "data_range": {
     "N_comp_rpm": [
       2000.0,
@@ -28,17 +41,51 @@
       4800.0
     ],
     "T_cool_in_C": [
+      15.0,
+      17.5,
+      20.0,
+      22.5,
+      25.0,
+      27.5,
+      30.0,
+      32.5,
+      35.0
+    ],
+    "T_cool_train_C": [
+      15.0,
       20.0,
       25.0,
       30.0,
       35.0
+    ],
+    "T_cool_validation_C": [
+      17.5,
+      22.5,
+      27.5,
+      32.5
     ]
   },
+  "validation_targets": {
+    "MAPE_percent": 10.0,
+    "max_relative_error_percent": 20.0
+  },
+  "validation_target_met": true,
+  "holdout_validation_metrics": {
+    "MAE_W": 93.83695693980715,
+    "RMSE_W": 126.20604031469951,
+    "MAPE_percent": 4.906580576509296,
+    "max_relative_error_percent": 19.823521852403278
+  },
+  "training_metrics": {
+    "MAE_W": 96.38663941036069,
+    "RMSE_W": 126.53787739537636,
+    "MAPE_percent": 4.8136722837364925,
+    "max_relative_error_percent": 17.427727041294954
+  },
   "error_metrics": {
-    "model_type": "candidate_b",
-    "MAE_W": 100.66570460491234,
-    "RMSE_W": 128.91942171607468,
-    "MAPE_percent": 4.975890343895819,
-    "max_relative_error_percent": 15.016017815718408
+    "MAE_W": 96.95803636090432,
+    "RMSE_W": 125.98583346256764,
+    "MAPE_percent": 4.921434964735193,
+    "max_relative_error_percent": 18.656963915190815
   }
 }

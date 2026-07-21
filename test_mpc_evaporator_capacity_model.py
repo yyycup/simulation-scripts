@@ -5,8 +5,17 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from mpc_evaporator_capacity_model import evaluate_capacity
+from mpc_evaporator_capacity_model import (
+    evaluate_capacity,
+    load_capacity_calibration,
+    smooth_mpc_power_gate,
+)
 from run_evaporator_mpc_capacity_diagnostic import build_comparison
+from run_mpc_evaporator_capacity_calibration import (
+    T_COOL_ALL,
+    T_COOL_TRAIN,
+    T_COOL_VALIDATION,
+)
 
 
 class MpcEvaporatorCapacityModelTest(unittest.TestCase):
@@ -17,6 +26,8 @@ class MpcEvaporatorCapacityModelTest(unittest.TestCase):
             "coefficients": {"b0": 0.2, "b1": 0.1, "b2": 0.01},
             "n_pump_ref_rpm": 2000.0,
             "q_evap_upper_bound_w": 5000.0,
+            "minimum_active_rpm": 2000.0,
+            "mpc_power_gate": {"center_rpm": 1950.0, "width_rpm": 10.0},
         }
 
     def test_candidate_b_uses_pump_ratio_and_coolant_temperature(self):
@@ -30,6 +41,41 @@ class MpcEvaporatorCapacityModelTest(unittest.TestCase):
         value = evaluate_capacity(calibration, n_comp_rpm=4000.0, n_pump_rpm=4000.0, t_cool_c=30.0)
 
         self.assertAlmostEqual(value, 2400.0)
+
+    def test_candidate_b_is_off_below_physical_compressor_map(self):
+        calibration = self._candidate_b_calibration()
+
+        self.assertEqual(
+            evaluate_capacity(calibration, 1999.0, 2400.0, 25.0),
+            0.0,
+        )
+        self.assertGreater(
+            evaluate_capacity(calibration, 2000.0, 2400.0, 25.0),
+            0.0,
+        )
+
+    def test_mpc_power_gate_smoothly_approximates_the_2000_rpm_hard_boundary(self):
+        calibration = self._candidate_b_calibration()
+
+        self.assertLess(smooth_mpc_power_gate(calibration, 1900.0), 0.02)
+        self.assertAlmostEqual(smooth_mpc_power_gate(calibration, 1950.0), 0.5)
+        self.assertGreater(smooth_mpc_power_gate(calibration, 2000.0), 0.99)
+
+    def test_canonical_candidate_b_covers_15c_with_holdout_temperatures(self):
+        calibration = load_capacity_calibration()
+
+        self.assertEqual(min(calibration["data_range"]["T_cool_in_C"]), 15.0)
+        self.assertEqual(calibration["data_range"]["T_cool_train_C"], list(T_COOL_TRAIN))
+        self.assertEqual(
+            calibration["data_range"]["T_cool_validation_C"],
+            list(T_COOL_VALIDATION),
+        )
+        self.assertEqual(tuple(calibration["data_range"]["T_cool_in_C"]), T_COOL_ALL)
+        self.assertTrue(calibration["validation_target_met"])
+        self.assertEqual(
+            calibration["optimizer_low_speed_policy"]["capacity"],
+            "continuous_relaxation_for_nlp",
+        )
 
     def test_capacity_is_bounded_nonnegative(self):
         calibration = {

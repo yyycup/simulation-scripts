@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import copy
 import json
 import os
@@ -368,7 +369,10 @@ def run_case(case, scene, source_csv):
     return metadata, evaluate_frozen_forecasts(case, physical_frame, forecasts)
 
 
-def main():
+def main(output_root=None):
+    global OUTPUT_ROOT
+    if output_root is not None:
+        OUTPUT_ROOT = Path(output_root)
     OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
     tmp = (OUTPUT_ROOT / "gekko_tmp").resolve()
     tmp.mkdir(parents=True, exist_ok=True)
@@ -402,4 +406,9 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(
+        description="Validate P against a cloned plant under one frozen MPC plan"
+    )
+    parser.add_argument("--output-root", type=Path, default=OUTPUT_ROOT)
+    args = parser.parse_args()
+    main(args.output_root)

@@ -67,7 +67,10 @@ from thermal_batch_config import (
 )
 from thermal_loop import DEFAULT_REFRIGERATION_DYNAMICS, pipe_delay_steps
 from thermal_system import C_tank, cp_cool, m_dot_nominal
-from mpc_evaporator_capacity_model import load_capacity_calibration
+from mpc_evaporator_capacity_model import (
+    load_capacity_calibration,
+    mpc_power_gate_parameters,
+)
 
 PUMP_POWER_SPEED_COEFF = (2.27321928e-09, -1.62756913e-05, 4.41581449e-02, -3.49442214e01)
 MODEL_DATA_ROOT = Path(__file__).resolve().parent / "model_data"
@@ -446,6 +449,14 @@ class MPCControllerDual:
         p = self.params
         self.evaporator_capacity_calibration = load_capacity_calibration()
         self._capacity_upper_w = float(self.evaporator_capacity_calibration["q_evap_upper_bound_w"])
+        (
+            self._mpc_power_gate_center_rpm,
+            self._mpc_power_gate_width_rpm,
+        ) = mpc_power_gate_parameters(self.evaporator_capacity_calibration)
+        # This is only a GEKKO initial guess; measured refrigeration states are
+        # applied before every solve. Keeping the established warm start avoids
+        # early frequency-case convergence failures.
+        initial_q_evap_w = p["kq"] * p["N_comp_min"]
 
         self.d1_qgen = self.m.Param(value=1000.0)
         self.d2_tamb = self.m.Param(value=p["T_env"])
@@ -454,8 +465,8 @@ class MPCControllerDual:
         self.T_cool_K = self.m.SV(value=p["T_init_cool"])
         self.N_comp = self.m.SV(value=p["N_comp_min"])
         self.N_pump = self.m.SV(value=MPC_U_NPUMP_INIT)
-        self.Q_evap = self.m.SV(value=p["kq"] * p["N_comp_min"])
-        self.Q_cond = self.m.SV(value=p["kq"] * p["N_comp_min"])
+        self.Q_evap = self.m.SV(value=initial_q_evap_w)
+        self.Q_cond = self.m.SV(value=initial_q_evap_w)
         self.T_plate = self.m.SV(value=p["T_init_cool"] - 273.15)
         self.T_supply = self.m.Var(value=p["T_init_cool"] - 273.15)
         self.T_return = self.m.Var(value=p["T_init_cool"] - 273.15)
@@ -492,17 +503,36 @@ class MPCControllerDual:
         else:
             N_pump_delay = self.N_pump
         H_batt_plate = self.m.Intermediate(p["h1_ref"] * ((N_pump_delay / p["N_pump_ref"]) ** 0.8))
-        P_comp = self.m.Intermediate(3.57e-6 * self.N_comp**2 + 0.442 * self.N_comp + 34.0)
+        compressor_power_gate = self.m.Intermediate(
+            0.5
+            * (
+                1.0
+                + (self.N_comp - self._mpc_power_gate_center_rpm)
+                / self.m.sqrt(
+                    (self.N_comp - self._mpc_power_gate_center_rpm) ** 2
+                    + self._mpc_power_gate_width_rpm**2
+                )
+            )
+        )
+        P_comp_active = self.m.Intermediate(
+            3.57e-6 * self.N_comp**2 + 0.442 * self.N_comp + 34.0
+        )
+        P_comp = self.m.Intermediate(compressor_power_gate * P_comp_active)
         P_pump = _pump_power_speed_expr(self.m, self.N_pump)
         P_comp_max = 3.57e-6 * 6000.0**2 + 0.442 * 6000.0 + 34.0
         P_pump_max = _pump_power_speed_value(N_PUMP_MAX_RPM)
         coeff = self.evaporator_capacity_calibration["coefficients"]
         n_pump_ref = float(self.evaporator_capacity_calibration["n_pump_ref_rpm"])
         n_pump_safe = self.m.Intermediate(N_pump_delay + 1e-6)
-        q_evap_raw_w = self.m.Intermediate(
+        q_evap_active_w = self.m.Intermediate(
             N_comp_delay * (float(coeff["b0"]) + float(coeff["b1"]) * n_pump_ref / n_pump_safe + float(coeff["b2"]) * (T_cool - 25.0))
         )
-        self.Q_evap_cmd_w = self.m.Var(value=1000.0, lb=0.0, ub=self._capacity_upper_w)
+        # Keep the three-parameter active-region capacity formula continuous in
+        # the NLP. The detailed plant and offline evaluator enforce the exact
+        # 2000 rpm hard-off boundary; adding the same switch here prevents the
+        # production GEKKO problem from converging.
+        q_evap_raw_w = q_evap_active_w
+        self.Q_evap_cmd_w = self.m.Var(value=initial_q_evap_w, lb=0.0, ub=self._capacity_upper_w)
         self.m.Equation(self.Q_evap_cmd_w == q_evap_raw_w)
         Q_evap_cmd = self.Q_evap_cmd_w
         C_flow = self.m.Intermediate(p["m_dot_ref"] * p["cp_cool"] * N_pump_delay / p["N_pump_ref"])

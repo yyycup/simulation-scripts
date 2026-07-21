@@ -32,10 +32,10 @@ class EvaporatorCapacityTableTests(unittest.TestCase):
             for row in rows
             if float(row["N_comp_rpm"]) in (2000.0, 3000.0)
             and float(row["N_pump_rpm"]) in (1600.0, 2400.0)
-            and float(row["T_cool_in_C"]) in (20.0, 25.0)
+            and float(row["T_cool_in_C"]) in (20.0, 22.5)
         ]
         expected = float(np.mean(values))
-        actual = trilinear_capacity_value(self.table, 2500.0, 2000.0, 22.5, "q_hx_w")
+        actual = trilinear_capacity_value(self.table, 2500.0, 2000.0, 21.25, "q_hx_w")
         self.assertEqual(len(values), 8)
         self.assertAlmostEqual(actual, expected)
     def test_controller_uses_bounded_candidate_b_command(self):
@@ -43,6 +43,8 @@ class EvaporatorCapacityTableTests(unittest.TestCase):
         self.assertIn("load_capacity_calibration", source)
         self.assertIn("evaporator_capacity_calibration", source)
         self.assertIn("q_evap_raw_w", source)
+        self.assertIn("compressor_power_gate", source)
+        self.assertIn("self.m.sqrt", source)
         self.assertIn("self.Q_evap_cmd_w", source)
         self.assertIn("lb=0.0", source)
         self.assertIn("ub=self._capacity_upper_w", source)
