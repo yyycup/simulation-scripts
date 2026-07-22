@@ -336,7 +336,14 @@ def p_sat_from_T(T):
     return safe_PropsSI("P", "T", T, "Q", 0.0, REF)
 
 
-def solve_saturation_temperatures(N_rpm_comp, N_rpm_fan, T_cool_in, m_dot_cool, T_outdoor):
+def solve_saturation_temperatures(
+    N_rpm_comp,
+    N_rpm_fan,
+    T_cool_in,
+    m_dot_cool,
+    T_outdoor,
+    low_speed_efficiency_loss_scale=1.0,
+):
     T_evap_low = T_EVAP_SAT_RATED_K
     T_evap_high = max(T_evap_low + 1.0, T_cool_in - 2.0)
     T_evap = np.clip(T_cool_in - 10.0, T_evap_low, T_evap_high)
@@ -350,7 +357,13 @@ def solve_saturation_temperatures(N_rpm_comp, N_rpm_fan, T_cool_in, m_dot_cool, 
             p_cond = p_evap * 1.1
 
         T_suc = safe_PropsSI("T", "P", p_evap, "Q", 1.0, REF) + superheat_desired
-        comp = compressor_model(p_evap, T_suc, p_cond, N_rpm_comp)
+        comp = compressor_model(
+            p_evap,
+            T_suc,
+            p_cond,
+            N_rpm_comp,
+            low_speed_efficiency_loss_scale=low_speed_efficiency_loss_scale,
+        )
         cond = condenser_model_NTU(comp["mdot"], comp["h_out"], p_cond, N_rpm_fan, T_outdoor)
         chiller = chiller_model_NTU(comp["mdot"], p_evap, cond["h_cond_out"], T_cool_in, m_dot_cool)
 
@@ -373,7 +386,13 @@ def solve_saturation_temperatures(N_rpm_comp, N_rpm_fan, T_cool_in, m_dot_cool, 
         if p_evap >= p_cond:
             p_cond = p_evap * 1.1
         T_suc = safe_PropsSI("T", "P", p_evap, "Q", 1.0, REF) + superheat_desired
-        comp = compressor_model(p_evap, T_suc, p_cond, N_rpm_comp)
+        comp = compressor_model(
+            p_evap,
+            T_suc,
+            p_cond,
+            N_rpm_comp,
+            low_speed_efficiency_loss_scale=low_speed_efficiency_loss_scale,
+        )
         cond = condenser_model_NTU(comp["mdot"], comp["h_out"], p_cond, N_rpm_fan, T_outdoor)
         return cond.get("Q_hx_potential", cond["Q_cond"]) - cond.get("Q_ref_need", cond["Q_cond"])
 
@@ -420,7 +439,11 @@ def fan_model(N_fan_rpm):
     return max(0.0, W_fan_max_power * (N_fan_rpm_clamped / N_fan_max_rpm) ** 3)
 
 
-def compressor_efficiencies(N_rpm, pressure_ratio):
+def compressor_efficiencies(
+    N_rpm,
+    pressure_ratio,
+    low_speed_efficiency_loss_scale=1.0,
+):
     """Return bounded map efficiencies, with a marked low-speed extrapolation.
 
     The measured map starts at 2000 rpm. Between 1000 and 2000 rpm the first
@@ -428,6 +451,10 @@ def compressor_efficiencies(N_rpm, pressure_ratio):
     to the measured map domain. This is an explicit engineering assumption,
     not a replacement for future low-speed compressor measurements.
     """
+    loss_scale = float(low_speed_efficiency_loss_scale)
+    if not np.isfinite(loss_scale) or loss_scale < 0.0:
+        raise ValueError("low_speed_efficiency_loss_scale must be finite and nonnegative")
+
     speed_for_efficiency = float(
         np.clip(N_rpm, COMPRESSOR_MIN_STEADY_RPM, speed_axis.max())
     )
@@ -438,6 +465,16 @@ def compressor_efficiencies(N_rpm, pressure_ratio):
     try:
         eta_vol = float(eta_vol_interpolator(point)[0])
         eta_is_actual = float(eta_is_interpolator(point)[0])
+        if speed_for_efficiency < COMPRESSOR_MAP_MIN_RPM:
+            edge_point = np.array(
+                [COMPRESSOR_MAP_MIN_RPM, pressure_ratio_for_map]
+            )
+            eta_vol_edge = float(eta_vol_interpolator(edge_point)[0])
+            eta_is_edge = float(eta_is_interpolator(edge_point)[0])
+            eta_vol = eta_vol_edge + loss_scale * (eta_vol - eta_vol_edge)
+            eta_is_actual = eta_is_edge + loss_scale * (
+                eta_is_actual - eta_is_edge
+            )
     except Exception:
         eta_vol, eta_is_actual = 0.8, 0.6
     eta_vol = float(np.clip(eta_vol, *ETA_VOL_EXTRAPOLATION_BOUNDS))
@@ -447,9 +484,14 @@ def compressor_efficiencies(N_rpm, pressure_ratio):
         "eta_is": eta_is_actual,
         "speed_for_efficiency_rpm": speed_for_efficiency,
         "pressure_ratio_for_map": pressure_ratio_for_map,
+        "low_speed_efficiency_loss_scale": loss_scale,
         "low_speed_extrapolated": speed_for_efficiency < COMPRESSOR_MAP_MIN_RPM,
         "efficiency_source": (
-            "linear_extrapolation_from_2000_3000_rpm"
+            (
+                "linear_extrapolation_from_2000_3000_rpm"
+                if loss_scale == 1.0
+                else "scaled_linear_extrapolation_from_2000_3000_rpm"
+            )
             if speed_for_efficiency < COMPRESSOR_MAP_MIN_RPM
             else "measured_map_interpolation"
         ),
@@ -469,7 +511,13 @@ def _compressor_flow_speed_rpm(N_rpm):
     return COMPRESSOR_MIN_STEADY_RPM * startup_fraction, startup_fraction
 
 
-def compressor_model(p_suc, T_suc, p_dis, N_rpm):
+def compressor_model(
+    p_suc,
+    T_suc,
+    p_dis,
+    N_rpm,
+    low_speed_efficiency_loss_scale=1.0,
+):
     rho_suc = safe_PropsSI("Dmass", "P", p_suc, "T", T_suc, REF)
     if np.isnan(rho_suc) or rho_suc <= 0:
         return {
@@ -480,6 +528,9 @@ def compressor_model(p_suc, T_suc, p_dis, N_rpm):
             "eta_is": 0.0,
             "speed_for_efficiency_rpm": 0.0,
             "pressure_ratio_for_map": np.nan,
+            "low_speed_efficiency_loss_scale": float(
+                low_speed_efficiency_loss_scale
+            ),
             "low_speed_extrapolated": False,
             "efficiency_source": "invalid_suction_state",
             "flow_speed_rpm": 0.0,
@@ -487,7 +538,11 @@ def compressor_model(p_suc, T_suc, p_dis, N_rpm):
         }
     if p_suc <= 0: p_suc = 1e3
     pr = max(1.0, p_dis / p_suc)
-    efficiency = compressor_efficiencies(N_rpm, pr)
+    efficiency = compressor_efficiencies(
+        N_rpm,
+        pr,
+        low_speed_efficiency_loss_scale=low_speed_efficiency_loss_scale,
+    )
     eta_vol = efficiency["eta_vol"]
     eta_is_actual = efficiency["eta_is"]
     flow_speed_rpm, startup_fraction = _compressor_flow_speed_rpm(N_rpm)
@@ -730,7 +785,14 @@ def _quantize_for_cache(value, step):
     return round(float(value) / step) * step
 
 
-def _refrigeration_cycle_cache_key(N_rpm_comp, N_rpm_fan, T_cool_in, m_dot_cool, T_outdoor):
+def _refrigeration_cycle_cache_key(
+    N_rpm_comp,
+    N_rpm_fan,
+    T_cool_in,
+    m_dot_cool,
+    T_outdoor,
+    low_speed_efficiency_loss_scale,
+):
     steps = _REFRIGERATION_CYCLE_CACHE_STEPS
     return (
         _quantize_for_cache(N_rpm_comp, steps["speed_rpm"]),
@@ -738,6 +800,7 @@ def _refrigeration_cycle_cache_key(N_rpm_comp, N_rpm_fan, T_cool_in, m_dot_cool,
         _quantize_for_cache(T_cool_in, steps["temperature_K"]),
         _quantize_for_cache(m_dot_cool, steps["m_dot_kg_s"]),
         _quantize_for_cache(T_outdoor, steps["temperature_K"]),
+        float(low_speed_efficiency_loss_scale),
     )
 
 
@@ -763,6 +826,7 @@ def _run_refrigeration_cycle_uncached(
     T_cool_in=None,
     m_dot_cool=None,
     T_outdoor=None,
+    low_speed_efficiency_loss_scale=1.0,
     **kwargs,
 ):
     if N_rpm_comp is None:
@@ -799,6 +863,9 @@ def _run_refrigeration_cycle_uncached(
             "E_D_total": 0.0, "E_D_comp_ratio": 0.0, "E_D_evap_ratio": 0.0,
             "E_D_cond_ratio": 0.0, "E_D_exp_ratio": 0.0,
             "compressor_eta_vol": 0.0, "compressor_eta_is": 0.0,
+            "compressor_low_speed_efficiency_loss_scale": float(
+                low_speed_efficiency_loss_scale
+            ),
             "compressor_flow_speed_rpm": 0.0,
             "compressor_startup_fraction": 0.0,
             "compressor_low_speed_extrapolated": False,
@@ -807,7 +874,12 @@ def _run_refrigeration_cycle_uncached(
 
     W_fan = fan_model(N_rpm_fan)
     T_evap_sat, T_cond_sat = solve_saturation_temperatures(
-        N_rpm_comp, N_rpm_fan, T_cool_in, m_dot_cool, T_outdoor
+        N_rpm_comp,
+        N_rpm_fan,
+        T_cool_in,
+        m_dot_cool,
+        T_outdoor,
+        low_speed_efficiency_loss_scale=low_speed_efficiency_loss_scale,
     )
     p_evap = p_sat_from_T(T_evap_sat)
     p_cond = p_sat_from_T(T_cond_sat)
@@ -815,7 +887,13 @@ def _run_refrigeration_cycle_uncached(
     if p_evap >= p_cond: p_cond = p_evap * 1.1
 
     T_suc = safe_PropsSI("T", "P", p_evap, "Q", 1.0, REF) + superheat_desired
-    comp_for_hx = compressor_model(p_evap, T_suc, p_cond, N_rpm_comp)
+    comp_for_hx = compressor_model(
+        p_evap,
+        T_suc,
+        p_cond,
+        N_rpm_comp,
+        low_speed_efficiency_loss_scale=low_speed_efficiency_loss_scale,
+    )
 
     cond = condenser_model_NTU(comp_for_hx["mdot"], comp_for_hx["h_out"], p_cond, N_rpm_fan, T_outdoor)
     chiller = chiller_model_NTU(comp_for_hx["mdot"], p_evap, cond["h_cond_out"], T_cool_in, m_dot_cool)
@@ -838,7 +916,13 @@ def _run_refrigeration_cycle_uncached(
 
     acc = suction_accumulator_model(comp_for_hx["mdot"], p_evap, chiller["h_out"])
     suction_superheat = max(0.0, acc["T_out"] - safe_PropsSI("T", "P", p_evap, "Q", 1.0, REF))
-    comp = compressor_model(p_evap, T_suc, p_cond, N_rpm_comp)
+    comp = compressor_model(
+        p_evap,
+        T_suc,
+        p_cond,
+        N_rpm_comp,
+        low_speed_efficiency_loss_scale=low_speed_efficiency_loss_scale,
+    )
     if comp["mdot"] > 1e-9:
         comp_mdot_raw = comp["mdot"]
         comp = dict(comp)
@@ -887,6 +971,9 @@ def _run_refrigeration_cycle_uncached(
         "risk_liquid_slugging": acc["risk_liquid_slugging"],
         "compressor_eta_vol": comp["eta_vol"],
         "compressor_eta_is": comp["eta_is"],
+        "compressor_low_speed_efficiency_loss_scale": comp[
+            "low_speed_efficiency_loss_scale"
+        ],
         "compressor_flow_speed_rpm": comp["flow_speed_rpm"],
         "compressor_startup_fraction": comp["startup_fraction"],
         "compressor_low_speed_extrapolated": comp["low_speed_extrapolated"],
@@ -901,6 +988,7 @@ def run_refrigeration_cycle(
     T_cool_in=None,
     m_dot_cool=None,
     T_outdoor=None,
+    low_speed_efficiency_loss_scale=1.0,
     **kwargs,
 ):
     global _REFRIGERATION_CYCLE_CACHE_HITS, _REFRIGERATION_CYCLE_CACHE_MISSES
@@ -915,7 +1003,14 @@ def run_refrigeration_cycle(
     if N_rpm_comp is None or N_rpm_fan is None or T_cool_in is None or m_dot_cool is None:
         raise TypeError("run_refrigeration_cycle requires compressor speed, fan speed, coolant inlet temperature, and coolant flow")
 
-    key = _refrigeration_cycle_cache_key(N_rpm_comp, N_rpm_fan, T_cool_in, m_dot_cool, T_outdoor)
+    key = _refrigeration_cycle_cache_key(
+        N_rpm_comp,
+        N_rpm_fan,
+        T_cool_in,
+        m_dot_cool,
+        T_outdoor,
+        low_speed_efficiency_loss_scale,
+    )
     cached = _REFRIGERATION_CYCLE_CACHE.get(key)
     if cached is not None:
         _REFRIGERATION_CYCLE_CACHE_HITS += 1
@@ -928,6 +1023,7 @@ def run_refrigeration_cycle(
         T_cool_in=T_cool_in,
         m_dot_cool=m_dot_cool,
         T_outdoor=T_outdoor,
+        low_speed_efficiency_loss_scale=low_speed_efficiency_loss_scale,
     )
     if len(_REFRIGERATION_CYCLE_CACHE) >= _REFRIGERATION_CYCLE_CACHE_MAX_SIZE:
         _REFRIGERATION_CYCLE_CACHE.clear()
