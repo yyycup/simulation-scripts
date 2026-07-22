@@ -86,6 +86,10 @@ ENHANCED_ARTIFACT = {
     },
 }
 
+LOW_SPEED_ENHANCED_ARTIFACT = json.loads(json.dumps(ENHANCED_ARTIFACT))
+LOW_SPEED_ENHANCED_ARTIFACT["gate"]["n_on_rpm"] = 1000.0
+LOW_SPEED_ENHANCED_ARTIFACT["capacity"]["minimum_active_rpm"] = 1000.0
+
 
 def make_row(scenario_id, split, n_comp, n_pump, t_cool, t_ambient, target):
     row = {column: 0.0 for column in REQUIRED_COLUMNS}
@@ -115,13 +119,17 @@ def synthetic_frame(include_validation=True, test_target=123.0):
         (6000, 4800, 35, 20),
     ]
     for index, values in enumerate(cases):
-        target = evaluate_physics_capacity(*values, artifact=KNOWN_ARTIFACT)
+        target = evaluate_physics_capacity(
+            *values, artifact=LOW_SPEED_ENHANCED_ARTIFACT
+        )
         rows.append(make_row(f"train_{index}", "train", *values, target))
     if include_validation:
         for index, values in enumerate(
             [(1800, 1800, 32, 35), (2200, 2200, 24, 25), (4200, 3600, 30, 40)]
         ):
-            target = evaluate_physics_capacity(*values, artifact=KNOWN_ARTIFACT)
+            target = evaluate_physics_capacity(
+                *values, artifact=LOW_SPEED_ENHANCED_ARTIFACT
+            )
             rows.append(make_row(f"validation_{index}", "validation", *values, target))
     rows.append(make_row("test_0", "test", 5500, 4400, 34, 42, test_target))
     return pd.DataFrame(rows)
@@ -609,6 +617,24 @@ class PhysicsArtifactTests(unittest.TestCase):
                 with self.assertRaises(PhysicsArtifactError):
                     validate_physics_artifact(artifact)
 
+    def test_low_speed_enhanced_artifact_is_off_below_1000_and_active_at_1000(self):
+        self.assertEqual(
+            evaluate_physics_capacity(
+                999.0, 2400.0, 25.0, 30.0, artifact=LOW_SPEED_ENHANCED_ARTIFACT
+            ),
+            0.0,
+        )
+        self.assertGreater(
+            evaluate_physics_capacity(
+                1000.0,
+                2400.0,
+                25.0,
+                30.0,
+                artifact=LOW_SPEED_ENHANCED_ARTIFACT,
+            ),
+            0.0,
+        )
+
     def test_require_validated_loader_rejects_smoke_and_accepts_validated(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / "physics.json"
@@ -736,8 +762,8 @@ class PhysicsFitTests(unittest.TestCase):
         parameters = np.linspace(-0.08, 0.12, 14)
         features = np.array(
             [
-                [1999.0, 1600.0, 15.0, 20.0],
-                [2000.0, 2400.0, 25.0, 30.0],
+                [999.0, 1600.0, 15.0, 20.0],
+                [1000.0, 2400.0, 25.0, 30.0],
                 [4200.0, 3200.0, 30.0, 35.0],
                 [6000.0, 4800.0, 35.0, 40.0],
             ],
@@ -753,9 +779,9 @@ class PhysicsFitTests(unittest.TestCase):
         artifact = fit_physics_artifact(synthetic_frame())
         validate_physics_artifact(artifact)
         self.assertEqual(artifact["gate"]["mode"], "hard")
-        self.assertEqual(artifact["gate"]["n_on_rpm"], 2000.0)
+        self.assertEqual(artifact["gate"]["n_on_rpm"], 1000.0)
         self.assertEqual(artifact["capacity"]["model"], "single_enhanced_v1")
-        self.assertEqual(artifact["capacity"]["minimum_active_rpm"], 2000.0)
+        self.assertEqual(artifact["capacity"]["minimum_active_rpm"], 1000.0)
         self.assertEqual(
             len(artifact["capacity"]["coefficients"]),
             len(artifact["capacity"]["feature_names"]),
@@ -780,7 +806,7 @@ class PhysicsFitTests(unittest.TestCase):
         )
         values = [
             evaluate_physics_capacity(speed, 2400, 27.5, 30, artifact=artifact)
-            for speed in np.linspace(2000, 6000, 41)
+            for speed in np.linspace(1000, 6000, 51)
         ]
         self.assertTrue(np.all(np.diff(values) >= -1e-7))
 

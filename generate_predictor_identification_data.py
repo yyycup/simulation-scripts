@@ -1125,7 +1125,7 @@ def run_dynamic_scenario(spec, split="train"):
     return rows
 
 
-def generate_dynamic_rows(specs, seed=20260714):
+def generate_dynamic_rows(specs, seed=20260714, progress=False):
     specs = list(specs)
     if not specs:
         raise ValueError("dynamic identification scenarios must not be empty")
@@ -1141,8 +1141,23 @@ def generate_dynamic_rows(specs, seed=20260714):
         raise ValueError("assign_scenario_splits returned an invalid assignment")
 
     rows = []
-    for spec in specs:
-        rows.extend(run_dynamic_scenario(spec, scenario_splits[spec.scenario_id]))
+    for index, spec in enumerate(specs, start=1):
+        if progress:
+            print(
+                f"Generating dynamic scenario {index}/{len(specs)}: "
+                f"{spec.scenario_id}",
+                flush=True,
+            )
+        scenario_rows = run_dynamic_scenario(
+            spec, scenario_splits[spec.scenario_id]
+        )
+        rows.extend(scenario_rows)
+        if progress:
+            print(
+                f"Completed dynamic scenario {index}/{len(specs)}: "
+                f"{spec.scenario_id} rows={len(scenario_rows)}",
+                flush=True,
+            )
     for row in rows:
         row["dataset_seed"] = int(seed)
     frame = pd.DataFrame(rows)
@@ -1284,6 +1299,7 @@ def main():
             rows = generate_dynamic_rows(
                 build_dynamic_scenarios(args.mode, seed=args.seed),
                 seed=args.seed,
+                progress=True,
             )
         frame = pd.DataFrame(rows)
         frame["dataset_seed"] = int(args.seed)

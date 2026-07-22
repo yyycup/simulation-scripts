@@ -70,6 +70,22 @@ from thermal_system import C_tank, cp_cool, m_dot_nominal
 from mpc_evaporator_capacity_model import load_capacity_calibration
 
 PUMP_POWER_SPEED_COEFF = (2.27321928e-09, -1.62756913e-05, 4.41581449e-02, -3.49442214e01)
+# Fit on the current detailed refrigeration-cycle steady grid.  The form keeps
+# mass-flow dependence proportional to speed and lets specific work vary with
+# coolant/ambient temperature without adding a pump-speed coupling term.
+COMPRESSOR_POWER_COEFF = (
+    0.03892611257343539,
+    2.994839654732717e-06,
+    -0.0007386784006792191,
+    0.0019398990645880215,
+)
+COMPRESSOR_POWER_COOLANT_REF_C = 25.0
+COMPRESSOR_POWER_AMBIENT_REF_C = 35.0
+COMPRESSOR_POWER_DOMAIN = {
+    "n_comp_rpm": (1000.0, 6000.0),
+    "t_cool_c": (15.0, 35.0),
+    "t_ambient_c": (20.0, 40.0),
+}
 MODEL_DATA_ROOT = Path(__file__).resolve().parent / "model_data"
 DEFAULT_REDUCED_MODEL_CALIBRATION_PATH = (
     MODEL_DATA_ROOT / "mpc_reduced_model_best_theta.json"
@@ -361,6 +377,37 @@ def _pump_power_speed_expr(m, n_rpm):
     return m.Intermediate(a3 * n_rpm**3 + a2 * n_rpm**2 + a1 * n_rpm + a0)
 
 
+def compressor_power_value(n_comp_rpm, t_cool_c, t_ambient_c):
+    a0, a1, a2, a3 = COMPRESSOR_POWER_COEFF
+    return float(n_comp_rpm) * (
+        a0
+        + a1 * float(n_comp_rpm)
+        + a2 * (float(t_cool_c) - COMPRESSOR_POWER_COOLANT_REF_C)
+        + a3 * (float(t_ambient_c) - COMPRESSOR_POWER_AMBIENT_REF_C)
+    )
+
+
+def _compressor_power_expr(m, n_comp_rpm, t_cool_c, t_ambient_c):
+    a0, a1, a2, a3 = COMPRESSOR_POWER_COEFF
+    return m.Intermediate(
+        n_comp_rpm
+        * (
+            a0
+            + a1 * n_comp_rpm
+            + a2 * (t_cool_c - COMPRESSOR_POWER_COOLANT_REF_C)
+            + a3 * (t_ambient_c - COMPRESSOR_POWER_AMBIENT_REF_C)
+        )
+    )
+
+
+def compressor_power_normalization_w():
+    return compressor_power_value(
+        COMPRESSOR_POWER_DOMAIN["n_comp_rpm"][1],
+        COMPRESSOR_POWER_DOMAIN["t_cool_c"][0],
+        COMPRESSOR_POWER_DOMAIN["t_ambient_c"][1],
+    )
+
+
 def load_reduced_model_calibration(path=DEFAULT_REDUCED_MODEL_CALIBRATION_PATH):
     try:
         with open(path, "r", encoding="utf-8") as fp:
@@ -496,11 +543,14 @@ class MPCControllerDual:
         else:
             N_pump_delay = self.N_pump
         H_batt_plate = self.m.Intermediate(p["h1_ref"] * ((N_pump_delay / p["N_pump_ref"]) ** 0.8))
-        P_comp = self.m.Intermediate(
-            3.57e-6 * self.N_comp**2 + 0.442 * self.N_comp + 34.0
+        P_comp = _compressor_power_expr(
+            self.m,
+            self.N_comp,
+            T_cool,
+            T_amb,
         )
         P_pump = _pump_power_speed_expr(self.m, self.N_pump)
-        P_comp_max = 3.57e-6 * 6000.0**2 + 0.442 * 6000.0 + 34.0
+        P_comp_max = compressor_power_normalization_w()
         P_pump_max = _pump_power_speed_value(N_PUMP_MAX_RPM)
         coeff = self.evaporator_capacity_calibration["coefficients"]
         n_pump_ref = float(self.evaporator_capacity_calibration["n_pump_ref_rpm"])
@@ -1527,9 +1577,14 @@ class MixedIntegerFlowMPC:
 
         avg_temp_c = m.Intermediate(avg_temp - 273.15)
         spread_sum = sum((t_col - avg_temp) ** 2 for t_col in self.t_cols)
-        P_comp = m.Intermediate(3.57e-6 * self.u_ncomp**2 + 0.442 * self.u_ncomp + 34.0)
+        P_comp = _compressor_power_expr(
+            m,
+            self.u_ncomp,
+            self.t_cool - 273.15,
+            self.t_amb - 273.15,
+        )
         P_pump = _pump_power_speed_expr(m, self.u_npump)
-        P_comp_max = 3.57e-6 * 6000.0**2 + 0.442 * 6000.0 + 34.0
+        P_comp_max = compressor_power_normalization_w()
         P_pump_max = _pump_power_speed_value(N_PUMP_MAX_RPM)
         self.switch_abs = m.Var(lb=0)
         m.Equation(self.d_flow * self.d_flow == 1)

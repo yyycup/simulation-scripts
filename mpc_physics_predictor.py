@@ -238,14 +238,16 @@ def validate_physics_artifact(artifact: object) -> dict:
     try:
         n_on = _finite_number(gate.get("n_on_rpm"), "gate.n_on_rpm")
         width = _finite_number(gate.get("width_rpm"), "gate.width_rpm")
-        if not 1900.0 <= n_on <= 2000.0:
-            raise ValueError("gate.n_on_rpm must be within [1900, 2000]")
-        if not 10.0 <= width <= 80.0:
-            raise ValueError("gate.width_rpm must be within [10, 80]")
-
         capacity_model = capacity.get("model", LEGACY_CAPACITY_MODEL)
         if capacity_model not in {LEGACY_CAPACITY_MODEL, ENHANCED_CAPACITY_MODEL}:
             raise ValueError(f"Unsupported capacity.model: {capacity_model!r}")
+        if capacity_model == LEGACY_CAPACITY_MODEL:
+            if not 1900.0 <= n_on <= 2000.0:
+                raise ValueError("legacy gate.n_on_rpm must be within [1900, 2000]")
+        elif not 1000.0 <= n_on <= 2000.0:
+            raise ValueError("enhanced gate.n_on_rpm must be within [1000, 2000]")
+        if not 10.0 <= width <= 80.0:
+            raise ValueError("gate.width_rpm must be within [10, 80]")
         coefficients = capacity.get("coefficients")
         expected_coefficient_count = (
             6
@@ -277,8 +279,14 @@ def validate_physics_artifact(artifact: object) -> dict:
                 capacity.get("minimum_active_rpm"),
                 "capacity.minimum_active_rpm",
             )
-            if minimum_active != 2000.0:
-                raise ValueError("capacity.minimum_active_rpm must equal 2000")
+            if not 1000.0 <= minimum_active <= 2000.0:
+                raise ValueError(
+                    "capacity.minimum_active_rpm must be within [1000, 2000]"
+                )
+            if minimum_active != n_on:
+                raise ValueError(
+                    "capacity.minimum_active_rpm must equal gate.n_on_rpm"
+                )
         n_pump_ref = _finite_number(
             capacity.get("n_pump_ref_rpm"), "capacity.n_pump_ref_rpm"
         )
@@ -396,14 +404,16 @@ def evaluate_physics_capacity(
         "t_cool_c": t_cool_c,
         "t_ambient_c": t_ambient_c,
     }
+    finite_inputs = {
+        name: _finite_number(value, name) for name, value in raw_inputs.items()
+    }
     clipped = {}
-    for name, value in raw_inputs.items():
-        finite = _finite_number(value, name)
+    for name, finite in finite_inputs.items():
         lower, upper = domain[name]
         clipped[name] = max(float(lower), min(float(upper), finite))
     capacity_model = capacity.get("model", LEGACY_CAPACITY_MODEL)
     if capacity_model == ENHANCED_CAPACITY_MODEL:
-        if clipped["n_comp_rpm"] < float(capacity["minimum_active_rpm"]):
+        if finite_inputs["n_comp_rpm"] < float(capacity["minimum_active_rpm"]):
             return 0.0
         gate_value = 1.0
         active = enhanced_active_capacity_w(

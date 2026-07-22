@@ -46,7 +46,7 @@ RIDGE_CANDIDATES = (1e-6, 1e-4, 1e-2)
 WEIGHT_POWER_CANDIDATES = (0.0, 0.5, 1.0)
 N_PUMP_REF_RPM = 2000.0
 Q_UPPER_W = 4800.0
-MINIMUM_ACTIVE_RPM = 2000.0
+MINIMUM_ACTIVE_RPM = 1000.0
 VALIDATION_TARGETS = {
     "active_mape_percent": 4.25,
     "active_rmse_w": 100.0,
@@ -239,9 +239,9 @@ def _grid_predictions(
 
 def _physical_checks(parameters: np.ndarray, contexts: np.ndarray) -> tuple[float, float]:
     low_speed = _grid_predictions(
-        parameters, contexts, np.array([1000.0, 1400.0, 1800.0, 1999.0])
+        parameters, contexts, np.array([300.0, 500.0, 999.0])
     )
-    active = _grid_predictions(parameters, contexts, np.linspace(2000.0, 6000.0, 17))
+    active = _grid_predictions(parameters, contexts, np.linspace(1000.0, 6000.0, 21))
     return float(np.max(low_speed)), float(np.min(np.diff(active, axis=1)))
 
 
@@ -262,10 +262,10 @@ def _candidate(
         train_scale = np.maximum(np.abs(train_targets), 1.0) ** weight_power
         weighted_train_errors = train_errors / train_scale
         low_speed = _grid_predictions(
-            masked, contexts, np.array([1000.0, 1400.0, 1800.0])
+            masked, contexts, np.array([300.0, 500.0, 999.0])
         )
         active = _grid_predictions(
-            masked, contexts, np.linspace(2000.0, 6000.0, 17)
+            masked, contexts, np.linspace(1000.0, 6000.0, 21)
         )
         low_speed_penalty = np.maximum(0.0, low_speed.ravel() - 25.0)
         monotonic_penalty = np.maximum(0.0, -np.diff(active, axis=1).ravel())
@@ -801,6 +801,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Fit the layered physics-P predictor")
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--steady-csv")
+    source.add_argument("--dynamic-base")
     source.add_argument("--plate-refinement-base")
     source.add_argument("--supply-refinement-base")
     parser.add_argument("--dynamic-csv")
@@ -812,7 +813,15 @@ def main() -> None:
         if arguments.dynamic_csv
         else None
     )
-    if arguments.supply_refinement_base:
+    if arguments.dynamic_base:
+        if dynamic_frame is None:
+            parser.error("--dynamic-base requires --dynamic-csv")
+        base_artifact = load_physics_artifact(
+            arguments.dynamic_base,
+            require_validated=True,
+        )
+        artifact = fit_physics_dynamic(base_artifact, dynamic_frame)
+    elif arguments.supply_refinement_base:
         if dynamic_frame is None:
             parser.error("--supply-refinement-base requires --dynamic-csv")
         base_artifact = load_physics_artifact(
