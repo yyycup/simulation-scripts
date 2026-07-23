@@ -564,6 +564,7 @@ def _dynamic_artifact(
     parameters: np.ndarray,
     model: str,
     evap_response_model: str | None = None,
+    battery_plate_conductance_model: str | None = None,
 ) -> dict:
     artifact = json.loads(json.dumps(base_artifact))
     base_count = len(DYNAMIC_NUMERIC_KEYS) + len(THERMAL_KEYS)
@@ -585,6 +586,10 @@ def _dynamic_artifact(
             artifact["dynamic"][name] = float(parameters[base_count + index])
     if evap_response_model is not None:
         artifact["dynamic"]["evap_response_model"] = evap_response_model
+    if battery_plate_conductance_model is not None:
+        artifact["thermal"][
+            "battery_plate_conductance_model"
+        ] = battery_plate_conductance_model
     validate_physics_artifact(artifact)
     return artifact
 
@@ -683,6 +688,7 @@ def _fit_dynamic_candidate(
             parameters,
             model,
             evap_response_model="direct",
+            battery_plate_conductance_model="constant_physical",
         )
         dynamic_errors = _dynamic_errors(artifact, train)
         regularization = 0.05 * (parameters - start) / np.maximum(upper - lower, 1e-9)
@@ -712,6 +718,7 @@ def _fit_dynamic_candidate(
             parameters,
             model,
             evap_response_model="direct",
+            battery_plate_conductance_model="constant_physical",
         ),
         result,
     )
@@ -778,6 +785,60 @@ def refine_physics_short_response(
         "evap_input_delay_s": 0.0,
         "tau_evap_s": 45.0,
         "all_other_dynamic_and_thermal_parameters_frozen": True,
+        "base_validation_weighted_mae": base_metric,
+        "candidate_validation_weighted_mae": candidate_metric,
+        "validation_improvement": improvement,
+    }
+    validate_physics_artifact(selected)
+    return selected
+
+
+def _plate_structure_artifact(base_artifact: dict) -> dict:
+    artifact = json.loads(json.dumps(base_artifact))
+    artifact["thermal"][
+        "battery_plate_conductance_model"
+    ] = "constant_physical"
+    validate_physics_artifact(artifact)
+    return artifact
+
+
+def refine_physics_plate_structure(
+    base_artifact: dict,
+    dynamic_frame: pd.DataFrame,
+) -> dict:
+    validate_physics_artifact(base_artifact)
+    if "dynamic" not in base_artifact or "thermal" not in base_artifact:
+        raise ValueError("Plate-structure refinement requires a dynamic physics artifact")
+    validate_identification_frame(dynamic_frame)
+    validation = dynamic_frame.loc[dynamic_frame["split"] == "validation"].copy()
+    _validate_dynamic_subset(validation, "validation", allow_empty=True)
+
+    candidate = _plate_structure_artifact(base_artifact)
+    base_metric = _dynamic_validation_metric(base_artifact, validation)
+    candidate_metric = _dynamic_validation_metric(candidate, validation)
+    selected = candidate
+    if base_metric is not None and candidate_metric is not None:
+        if candidate_metric >= base_metric:
+            selected = json.loads(json.dumps(base_artifact))
+    improvement = None
+    if (
+        base_metric is not None
+        and candidate_metric is not None
+        and base_metric > 0.0
+    ):
+        improvement = (base_metric - candidate_metric) / base_metric
+
+    selected.setdefault("fit", {})["plate_structure_refinement"] = {
+        "fit_status": (
+            "validated" if not validation.empty else "mechanical_smoke_unvalidated"
+        ),
+        "selection_source": (
+            "validation_only" if not validation.empty else "plant_structure"
+        ),
+        "selected": selected is candidate,
+        "battery_plate_conductance_model": "constant_physical",
+        "physical_basis": "cell_to_plate_conductance_is_independent_of_pump_speed",
+        "all_numeric_parameters_frozen": True,
         "base_validation_weighted_mae": base_metric,
         "candidate_validation_weighted_mae": candidate_metric,
         "validation_improvement": improvement,
@@ -963,6 +1024,10 @@ def fit_physics_dynamic(base_artifact: dict, dynamic_frame: pd.DataFrame) -> dic
         "evap_input_delay_selection": "fixed_zero_for_direct_response",
         "tau_evap_selection": "fixed_plant_45_s",
         "q_cond_role": "independent_internal_lag_not_evaporator_driver",
+        "battery_plate_conductance_model": selected["thermal"].get(
+            "battery_plate_conductance_model",
+            "legacy_pump_scaled",
+        ),
         "excluded_observation_fields": ["q_cond_eff_w"],
         "training_horizons_steps": list(TRAINING_HORIZONS),
         "train_scenarios": int(train["scenario_id"].nunique()),
@@ -1000,6 +1065,7 @@ def main() -> None:
     source.add_argument("--steady-csv")
     source.add_argument("--dynamic-base")
     source.add_argument("--short-response-base")
+    source.add_argument("--plate-structure-base")
     source.add_argument("--plate-refinement-base")
     source.add_argument("--supply-refinement-base")
     parser.add_argument("--dynamic-csv")
@@ -1027,6 +1093,14 @@ def main() -> None:
             require_validated=True,
         )
         artifact = refine_physics_short_response(base_artifact, dynamic_frame)
+    elif arguments.plate_structure_base:
+        if dynamic_frame is None:
+            parser.error("--plate-structure-base requires --dynamic-csv")
+        base_artifact = load_physics_artifact(
+            arguments.plate_structure_base,
+            require_validated=True,
+        )
+        artifact = refine_physics_plate_structure(base_artifact, dynamic_frame)
     elif arguments.supply_refinement_base:
         if dynamic_frame is None:
             parser.error("--supply-refinement-base requires --dynamic-csv")
@@ -1065,6 +1139,11 @@ def main() -> None:
         print(
             "plate_refinement_selected="
             f"{artifact['fit']['plate_refinement']['selected']}"
+        )
+    if "plate_structure_refinement" in artifact["fit"]:
+        print(
+            "plate_structure_refinement_selected="
+            f"{artifact['fit']['plate_structure_refinement']['selected']}"
         )
     if "supply_refinement" in artifact["fit"]:
         print(

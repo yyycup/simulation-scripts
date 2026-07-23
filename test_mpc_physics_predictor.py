@@ -17,6 +17,7 @@ from fit_mpc_physics_predictor import (
     _artifact_from_parameters,
     _dynamic_artifact,
     _plate_refinement_artifact,
+    _plate_structure_artifact,
     _short_response_artifact,
     _supply_refinement_artifact,
     _predict,
@@ -25,6 +26,7 @@ from fit_mpc_physics_predictor import (
     fit_physics_dynamic,
     fit_physics_predictor,
     refine_physics_plate,
+    refine_physics_plate_structure,
     refine_physics_short_response,
     refine_physics_supply,
 )
@@ -37,6 +39,7 @@ from mpc_physics_predictor import (
     PHYSICAL_COOLANT_CP_J_KG_K,
     PhysicsArtifactError,
     PhysicsPredictorState,
+    _battery_plate_conductance,
     consumed_parameter_names,
     evaluate_physics_capacity,
     initialize_physics_state,
@@ -367,6 +370,24 @@ class PhysicsCapacityTests(unittest.TestCase):
 
 
 class PhysicsDynamicTests(unittest.TestCase):
+    def test_physical_battery_plate_conductance_is_independent_of_pump_speed(self):
+        thermal = json.loads(json.dumps(DEFAULT_THERMAL_PARAMETERS))
+        thermal["battery_plate_conductance_model"] = "constant_physical"
+
+        low_flow = _battery_plate_conductance(thermal, 0.5)
+        high_flow = _battery_plate_conductance(thermal, 1.5)
+
+        self.assertEqual(low_flow, thermal["battery_plate_conductance_w_k"])
+        self.assertEqual(high_flow, thermal["battery_plate_conductance_w_k"])
+
+    def test_legacy_battery_plate_conductance_retains_pump_scaling(self):
+        thermal = json.loads(json.dumps(DEFAULT_THERMAL_PARAMETERS))
+
+        low_flow = _battery_plate_conductance(thermal, 0.5)
+        high_flow = _battery_plate_conductance(thermal, 1.5)
+
+        self.assertLess(low_flow, high_flow)
+
     def test_direct_evaporator_response_bypasses_condenser_lag(self):
         artifact = json.loads(json.dumps(CUBIC_ARTIFACT))
         artifact["dynamic"] = json.loads(json.dumps(DEFAULT_DYNAMIC_PARAMETERS))
@@ -615,6 +636,18 @@ class PhysicsDynamicTests(unittest.TestCase):
 
 
 class PhysicsArtifactTests(unittest.TestCase):
+    def test_battery_plate_conductance_model_is_strictly_validated(self):
+        artifact = json.loads(json.dumps(CUBIC_ARTIFACT))
+        artifact["dynamic"] = json.loads(json.dumps(DEFAULT_DYNAMIC_PARAMETERS))
+        artifact["thermal"] = json.loads(json.dumps(DEFAULT_THERMAL_PARAMETERS))
+        artifact["thermal"]["battery_plate_conductance_model"] = "invalid"
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "battery_plate_conductance_model",
+        ):
+            validate_physics_artifact(artifact)
+
     def test_plate_fluid_effectiveness_cannot_exceed_one(self):
         artifact = json.loads(json.dumps(KNOWN_ARTIFACT))
         artifact["dynamic"] = json.loads(json.dumps(DEFAULT_DYNAMIC_PARAMETERS))
@@ -723,6 +756,19 @@ class PhysicsArtifactTests(unittest.TestCase):
 
 
 class PhysicsFitTests(unittest.TestCase):
+    def test_dynamic_artifact_can_select_physical_battery_plate_structure(self):
+        artifact = _dynamic_artifact(
+            KNOWN_ARTIFACT,
+            DYNAMIC_START,
+            "constant",
+            battery_plate_conductance_model="constant_physical",
+        )
+
+        self.assertEqual(
+            artifact["thermal"]["battery_plate_conductance_model"],
+            "constant_physical",
+        )
+
     def short_response_base(self):
         base = json.loads(json.dumps(KNOWN_ARTIFACT))
         base["dynamic"] = json.loads(json.dumps(DEFAULT_DYNAMIC_PARAMETERS))
@@ -777,6 +823,50 @@ class PhysicsFitTests(unittest.TestCase):
         metadata = refined["fit"]["short_response_refinement"]
         self.assertFalse(metadata["selected"])
         self.assertAlmostEqual(metadata["validation_improvement"], -0.2)
+
+    def test_plate_structure_artifact_changes_only_conductance_model(self):
+        base = self.short_response_base()
+
+        refined = _plate_structure_artifact(base)
+
+        self.assertEqual(refined["dynamic"], base["dynamic"])
+        for name, value in base["thermal"].items():
+            self.assertEqual(refined["thermal"][name], value)
+        self.assertEqual(
+            refined["thermal"]["battery_plate_conductance_model"],
+            "constant_physical",
+        )
+
+    def test_plate_structure_refinement_uses_validation_gate(self):
+        base = self.short_response_base()
+        with patch(
+            "fit_mpc_physics_predictor._dynamic_validation_metric",
+            side_effect=[1.0, 0.8],
+        ):
+            refined = refine_physics_plate_structure(
+                base, synthetic_dynamic_frame()
+            )
+
+        metadata = refined["fit"]["plate_structure_refinement"]
+        self.assertTrue(metadata["selected"])
+        self.assertAlmostEqual(metadata["validation_improvement"], 0.2)
+        self.assertEqual(
+            refined["thermal"]["battery_plate_conductance_model"],
+            "constant_physical",
+        )
+
+    def test_plate_structure_refinement_retains_base_without_improvement(self):
+        base = self.short_response_base()
+        with patch(
+            "fit_mpc_physics_predictor._dynamic_validation_metric",
+            side_effect=[1.0, 1.0],
+        ):
+            refined = refine_physics_plate_structure(
+                base, synthetic_dynamic_frame()
+            )
+
+        self.assertEqual(refined["thermal"], base["thermal"])
+        self.assertFalse(refined["fit"]["plate_structure_refinement"]["selected"])
 
     def test_known_coolant_cp_is_fixed_and_not_fitted(self):
         self.assertEqual(PHYSICAL_COOLANT_CP_J_KG_K, 3391.0)
@@ -1117,6 +1207,14 @@ class PhysicsFitTests(unittest.TestCase):
         self.assertEqual(artifact["dynamic"]["evap_response_model"], "direct")
         self.assertEqual(artifact["dynamic"]["evap_input_delay_s"], 0.0)
         self.assertEqual(artifact["dynamic"]["tau_evap_s"], 45.0)
+        self.assertEqual(
+            artifact["thermal"]["battery_plate_conductance_model"],
+            "constant_physical",
+        )
+        self.assertEqual(
+            metadata["battery_plate_conductance_model"],
+            "constant_physical",
+        )
         self.assertEqual(metadata["excluded_observation_fields"], ["q_cond_eff_w"])
         self.assertEqual(metadata["training_horizons_steps"], [10, 20, 60])
         self.assertEqual(metadata["selection_source"], "validation_only")

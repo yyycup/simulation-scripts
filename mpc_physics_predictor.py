@@ -54,6 +54,10 @@ SCHEDULE_PARAMETER_NAMES = {
     "tau_evap_schedule_s",
 }
 EVAP_RESPONSE_MODELS = {"cascaded", "direct"}
+BATTERY_PLATE_CONDUCTANCE_MODELS = {
+    "legacy_pump_scaled",
+    "constant_physical",
+}
 
 LEGACY_CAPACITY_MODEL = "legacy_six_term"
 ENHANCED_CAPACITY_MODEL = "single_enhanced_v1"
@@ -452,16 +456,35 @@ def validate_physics_artifact(artifact: object) -> dict:
             required_thermal = set(DEFAULT_THERMAL_PARAMETERS) - {
                 "plate_fluid_effectiveness"
             }
-            thermal_keys = set(thermal)
-            if (
-                thermal_keys != required_thermal
-                and thermal_keys != set(DEFAULT_THERMAL_PARAMETERS)
-            ):
+            standard_thermal = set(DEFAULT_THERMAL_PARAMETERS)
+            allowed_thermal = standard_thermal | {
+                "battery_plate_conductance_model"
+            }
+            thermal_keys = frozenset(thermal)
+            valid_thermal_keys = {
+                frozenset(required_thermal),
+                frozenset(standard_thermal),
+                frozenset(required_thermal | {"battery_plate_conductance_model"}),
+                frozenset(allowed_thermal),
+            }
+            if thermal_keys not in valid_thermal_keys:
                 raise ValueError(
                     "thermal keys must contain the legacy thermal fields and may "
-                    "add plate_fluid_effectiveness"
+                    "add plate_fluid_effectiveness and "
+                    "battery_plate_conductance_model"
+                )
+            conductance_model = thermal.get(
+                "battery_plate_conductance_model",
+                "legacy_pump_scaled",
+            )
+            if conductance_model not in BATTERY_PLATE_CONDUCTANCE_MODELS:
+                raise ValueError(
+                    "thermal.battery_plate_conductance_model must be "
+                    "legacy_pump_scaled or constant_physical"
                 )
             for name, value in thermal.items():
+                if name == "battery_plate_conductance_model":
+                    continue
                 number = _finite_number(value, f"thermal.{name}")
                 if number <= 0.0:
                     raise ValueError(f"thermal.{name} must be greater than zero")
@@ -569,11 +592,24 @@ def lag_step(previous: object, target: object, dt_s: object, tau_s: object) -> f
     )
 
 
+def _battery_plate_conductance(thermal: dict, pump_ratio: float) -> float:
+    """Return cell-to-plate conductance without conflating coolant flow."""
+    base = float(thermal["battery_plate_conductance_w_k"])
+    model = thermal.get(
+        "battery_plate_conductance_model",
+        "legacy_pump_scaled",
+    )
+    if model == "constant_physical":
+        return base
+    return base * float(pump_ratio) ** 0.8
+
+
 def consumed_parameter_names(artifact: object = None) -> set[str]:
     selected = DEFAULT_PHYSICS_ARTIFACT if artifact is None else artifact
     validate_physics_artifact(selected)
     dynamic = selected.get("dynamic", DEFAULT_DYNAMIC_PARAMETERS)
-    names = set(dynamic) | set(DEFAULT_THERMAL_PARAMETERS)
+    thermal = selected.get("thermal", DEFAULT_THERMAL_PARAMETERS)
+    names = set(dynamic) | set(thermal)
     if dynamic["time_constant_model"] == "scheduled":
         names |= SCHEDULE_PARAMETER_NAMES
     return names
@@ -740,8 +776,9 @@ def step_physics_predictor(
         dt,
         state.t_supply_c,
     )
-    battery_plate_conductance = (
-        float(thermal["battery_plate_conductance_w_k"]) * pump_ratio**0.8
+    battery_plate_conductance = _battery_plate_conductance(
+        thermal,
+        pump_ratio,
     )
     reference_flow_capacity = (
         float(thermal["coolant_mass_flow_ref_kg_s"])
