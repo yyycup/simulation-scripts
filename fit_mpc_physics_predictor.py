@@ -13,6 +13,8 @@ ensure_env_library_bin_on_path()
 from scipy.optimize import least_squares
 
 from mpc_physics_predictor import (
+    CUBIC_CAPACITY_FEATURE_NAMES,
+    CUBIC_CAPACITY_MODEL,
     DEFAULT_DYNAMIC_PARAMETERS,
     DEFAULT_INPUT_DOMAIN,
     DEFAULT_THERMAL_PARAMETERS,
@@ -30,12 +32,11 @@ from mpc_predictor_selection import PHYSICS_P
 from predictor_identification_data import validate_identification_frame
 
 
-LOWER = np.full(len(ENHANCED_CAPACITY_FEATURE_NAMES), -2.0, dtype=float)
-UPPER = np.full(len(ENHANCED_CAPACITY_FEATURE_NAMES), 2.0, dtype=float)
 STARTS = (
     np.array([0.6, -0.1, 0.015, -0.002] + [0.0] * 10, dtype=float),
     np.array([0.5, -0.05, 0.05, -0.01] + [0.0] * 10, dtype=float),
 )
+CUBIC_START = np.array([0.65] + [0.0] * 19, dtype=float)
 FEATURE_CANDIDATES = (
     ("base_5", (True,) * 5 + (False,) * 9),
     ("physical_7", (True,) * 7 + (False,) * 7),
@@ -136,7 +137,17 @@ def _masked_parameters(parameters: np.ndarray, mask: tuple[bool, ...]) -> np.nda
     return masked
 
 
-def _artifact_from_parameters(parameters: np.ndarray) -> dict:
+def _artifact_from_parameters(
+    parameters: np.ndarray,
+    capacity_model: str = ENHANCED_CAPACITY_MODEL,
+) -> dict:
+    feature_names_by_model = {
+        ENHANCED_CAPACITY_MODEL: ENHANCED_CAPACITY_FEATURE_NAMES,
+        CUBIC_CAPACITY_MODEL: CUBIC_CAPACITY_FEATURE_NAMES,
+    }
+    if capacity_model not in feature_names_by_model:
+        raise ValueError(f"Unsupported capacity model: {capacity_model!r}")
+    feature_names = feature_names_by_model[capacity_model]
     artifact = {
         "model_type": PHYSICS_P,
         "schema_version": 1,
@@ -146,9 +157,9 @@ def _artifact_from_parameters(parameters: np.ndarray) -> dict:
             "width_rpm": 10.0,
         },
         "capacity": {
-            "model": ENHANCED_CAPACITY_MODEL,
+            "model": capacity_model,
             "coefficients": [float(value) for value in parameters],
-            "feature_names": list(ENHANCED_CAPACITY_FEATURE_NAMES),
+            "feature_names": list(feature_names),
             "minimum_active_rpm": MINIMUM_ACTIVE_RPM,
             "n_pump_ref_rpm": N_PUMP_REF_RPM,
             "q_upper_w": Q_UPPER_W,
@@ -182,15 +193,14 @@ def _validate_fit_subset(frame: pd.DataFrame, expected_split: str, allow_empty: 
         raise ValueError(f"{expected_split} n_pump_eff_rpm must be greater than zero")
 
 
-def _predict(parameters: np.ndarray, features: np.ndarray) -> np.ndarray:
+def _design_matrix(features: np.ndarray, capacity_model: str) -> np.ndarray:
     values = np.asarray(features, dtype=float)
-    n_comp = values[:, 0]
     pump_ratio = N_PUMP_REF_RPM / values[:, 1]
     coolant = (values[:, 2] - 27.5) / 7.5
     ambient = (values[:, 3] - 30.0) / 10.0
-    compressor = (n_comp - 4000.0) / 2000.0
-    design = np.column_stack(
-        (
+    compressor = (values[:, 0] - 4000.0) / 2000.0
+    if capacity_model == ENHANCED_CAPACITY_MODEL:
+        return np.column_stack((
             np.ones(len(values)),
             pump_ratio,
             coolant,
@@ -205,8 +215,41 @@ def _predict(parameters: np.ndarray, features: np.ndarray) -> np.ndarray:
             ambient**2,
             pump_ratio * ambient,
             pump_ratio * compressor,
-        )
-    )
+        ))
+    if capacity_model == CUBIC_CAPACITY_MODEL:
+        return np.column_stack((
+            np.ones(len(values)),
+            compressor,
+            pump_ratio,
+            coolant,
+            ambient,
+            compressor**2,
+            compressor * pump_ratio,
+            compressor * coolant,
+            compressor * ambient,
+            pump_ratio**2,
+            pump_ratio * coolant,
+            pump_ratio * ambient,
+            coolant**2,
+            coolant * ambient,
+            compressor**2 * pump_ratio,
+            compressor * pump_ratio**2,
+            compressor * pump_ratio * coolant,
+            compressor * pump_ratio * ambient,
+            compressor * coolant * ambient,
+            coolant**3,
+        ))
+    raise ValueError(f"Unsupported capacity model: {capacity_model!r}")
+
+
+def _predict(
+    parameters: np.ndarray,
+    features: np.ndarray,
+    capacity_model: str = ENHANCED_CAPACITY_MODEL,
+) -> np.ndarray:
+    values = np.asarray(features, dtype=float)
+    n_comp = values[:, 0]
+    design = _design_matrix(values, capacity_model)
     raw = n_comp * (design @ np.asarray(parameters, dtype=float))
     active = np.where(n_comp < MINIMUM_ACTIVE_RPM, 0.0, raw)
     return np.clip(active, 0.0, Q_UPPER_W)
@@ -221,7 +264,10 @@ def _constraint_contexts(validation: pd.DataFrame) -> np.ndarray:
 
 
 def _grid_predictions(
-    parameters: np.ndarray, contexts: np.ndarray, speeds: np.ndarray
+    parameters: np.ndarray,
+    contexts: np.ndarray,
+    speeds: np.ndarray,
+    capacity_model: str = ENHANCED_CAPACITY_MODEL,
 ) -> np.ndarray:
     predictions = []
     for n_pump, t_cool, t_ambient in contexts:
@@ -233,15 +279,21 @@ def _grid_predictions(
                 np.full_like(speeds, t_ambient),
             )
         )
-        predictions.append(_predict(parameters, features))
+        predictions.append(_predict(parameters, features, capacity_model))
     return np.asarray(predictions, dtype=float)
 
 
-def _physical_checks(parameters: np.ndarray, contexts: np.ndarray) -> tuple[float, float]:
+def _physical_checks(
+    parameters: np.ndarray,
+    contexts: np.ndarray,
+    capacity_model: str = ENHANCED_CAPACITY_MODEL,
+) -> tuple[float, float]:
     low_speed = _grid_predictions(
-        parameters, contexts, np.array([300.0, 500.0, 999.0])
+        parameters, contexts, np.array([300.0, 500.0, 999.0]), capacity_model
     )
-    active = _grid_predictions(parameters, contexts, np.linspace(1000.0, 6000.0, 21))
+    active = _grid_predictions(
+        parameters, contexts, np.linspace(1000.0, 6000.0, 21), capacity_model
+    )
     return float(np.max(low_speed)), float(np.min(np.diff(active, axis=1)))
 
 
@@ -253,19 +305,24 @@ def _candidate(
     ridge: float,
     weight_power: float,
     start: np.ndarray,
+    capacity_model: str = ENHANCED_CAPACITY_MODEL,
 ) -> tuple[object, np.ndarray] | None:
     mask_array = np.asarray(mask, dtype=float)
+    lower = np.full(len(start), -2.0, dtype=float)
+    upper = np.full(len(start), 2.0, dtype=float)
 
     def residual(parameters: np.ndarray) -> np.ndarray:
         masked = _masked_parameters(parameters, mask)
-        train_errors = _predict(masked, train_features) - train_targets
+        train_errors = (
+            _predict(masked, train_features, capacity_model) - train_targets
+        )
         train_scale = np.maximum(np.abs(train_targets), 1.0) ** weight_power
         weighted_train_errors = train_errors / train_scale
         low_speed = _grid_predictions(
-            masked, contexts, np.array([300.0, 500.0, 999.0])
+            masked, contexts, np.array([300.0, 500.0, 999.0]), capacity_model
         )
         active = _grid_predictions(
-            masked, contexts, np.linspace(1000.0, 6000.0, 21)
+            masked, contexts, np.linspace(1000.0, 6000.0, 21), capacity_model
         )
         low_speed_penalty = np.maximum(0.0, low_speed.ravel() - 25.0)
         monotonic_penalty = np.maximum(0.0, -np.diff(active, axis=1).ravel())
@@ -283,7 +340,7 @@ def _candidate(
         result = least_squares(
             residual,
             start.copy(),
-            bounds=(LOWER, UPPER),
+            bounds=(lower, upper),
             tr_solver="lsmr",
         )
     except (ValueError, RuntimeError, FloatingPointError):
@@ -291,14 +348,16 @@ def _candidate(
     parameters = np.asarray(result.x, dtype=float)
     if (
         not result.success
-        or parameters.shape != LOWER.shape
+        or parameters.shape != lower.shape
         or not np.isfinite(parameters).all()
-        or np.any(parameters < LOWER)
-        or np.any(parameters > UPPER)
+        or np.any(parameters < lower)
+        or np.any(parameters > upper)
     ):
         return None
     parameters = _masked_parameters(parameters, mask)
-    max_low_speed, min_active_slope = _physical_checks(parameters, contexts)
+    max_low_speed, min_active_slope = _physical_checks(
+        parameters, contexts, capacity_model
+    )
     if (
         not math.isfinite(max_low_speed)
         or not math.isfinite(min_active_slope)
@@ -309,10 +368,14 @@ def _candidate(
     return result, parameters
 
 
-def _validation_metrics(parameters: np.ndarray, validation: pd.DataFrame) -> dict:
+def _validation_metrics(
+    parameters: np.ndarray,
+    validation: pd.DataFrame,
+    capacity_model: str = ENHANCED_CAPACITY_MODEL,
+) -> dict:
     features = validation.loc[:, FEATURE_COLUMNS].to_numpy(dtype=float)
     targets = validation["q_evap_ss_w"].to_numpy(dtype=float)
-    errors = _predict(parameters, features) - targets
+    errors = _predict(parameters, features, capacity_model) - targets
     active = features[:, 0] >= MINIMUM_ACTIVE_RPM
     active_targets = targets[active]
     if not len(active_targets) or np.any(np.abs(active_targets) <= 1e-9):
@@ -346,7 +409,14 @@ def fit_physics_predictor(
     configurations = []
     if validation_frame.empty:
         configurations.append(
-            (FEATURE_CANDIDATES[0], RIDGE_CANDIDATES[1], WEIGHT_POWER_CANDIDATES[0], 0)
+            (
+                ENHANCED_CAPACITY_MODEL,
+                FEATURE_CANDIDATES[0],
+                RIDGE_CANDIDATES[1],
+                WEIGHT_POWER_CANDIDATES[0],
+                0,
+                STARTS[0],
+            )
         )
     else:
         for feature_candidate in FEATURE_CANDIDATES:
@@ -354,11 +424,35 @@ def fit_physics_predictor(
                 for weight_power in WEIGHT_POWER_CANDIDATES:
                     for start_index in range(len(STARTS)):
                         configurations.append(
-                            (feature_candidate, ridge, weight_power, start_index)
+                            (
+                                ENHANCED_CAPACITY_MODEL,
+                                feature_candidate,
+                                ridge,
+                                weight_power,
+                                start_index,
+                                STARTS[start_index],
+                            )
                         )
+        configurations.append(
+            (
+                CUBIC_CAPACITY_MODEL,
+                ("cubic_20", (True,) * len(CUBIC_CAPACITY_FEATURE_NAMES)),
+                1e-4,
+                0.8,
+                0,
+                CUBIC_START,
+            )
+        )
 
     candidates = []
-    for (feature_name, mask), ridge, weight_power, start_index in configurations:
+    for (
+        capacity_model,
+        (feature_name, mask),
+        ridge,
+        weight_power,
+        start_index,
+        start,
+    ) in configurations:
         fitted = _candidate(
             train_features,
             train_targets,
@@ -366,17 +460,23 @@ def fit_physics_predictor(
             mask,
             ridge,
             weight_power,
-            STARTS[start_index],
+            start,
+            capacity_model,
         )
         if fitted is None:
             continue
         result, parameters = fitted
         metrics = None
         if not validation_frame.empty:
-            metrics = _validation_metrics(parameters, validation_frame)
-        max_low_speed, min_active_slope = _physical_checks(parameters, contexts)
+            metrics = _validation_metrics(
+                parameters, validation_frame, capacity_model
+            )
+        max_low_speed, min_active_slope = _physical_checks(
+            parameters, contexts, capacity_model
+        )
         candidates.append(
             {
+                "capacity_model": capacity_model,
                 "feature_name": feature_name,
                 "mask": mask,
                 "ridge": ridge,
@@ -417,7 +517,7 @@ def fit_physics_predictor(
         )
 
     parameters = selected["parameters"]
-    artifact = _artifact_from_parameters(parameters)
+    artifact = _artifact_from_parameters(parameters, selected["capacity_model"])
     validation_available = not validation_frame.empty
     artifact["fit"] = {
         "fit_status": "validated" if validation_available else "mechanical_smoke_unvalidated",
@@ -434,6 +534,7 @@ def fit_physics_predictor(
         "validation_available": validation_available,
         "validation_metrics": selected["metrics"],
         "selected_features": selected["feature_name"],
+        "selected_capacity_model": selected["capacity_model"],
         "selected_mask": list(selected["mask"]),
         "ridge": selected["ridge"],
         "weight_power": selected["weight_power"],

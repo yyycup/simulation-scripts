@@ -27,6 +27,8 @@ from fit_mpc_physics_predictor import (
     refine_physics_supply,
 )
 from mpc_physics_predictor import (
+    CUBIC_CAPACITY_FEATURE_NAMES,
+    CUBIC_CAPACITY_MODEL,
     DEFAULT_INPUT_DOMAIN,
     DEFAULT_DYNAMIC_PARAMETERS,
     DEFAULT_THERMAL_PARAMETERS,
@@ -89,6 +91,20 @@ ENHANCED_ARTIFACT = {
 LOW_SPEED_ENHANCED_ARTIFACT = json.loads(json.dumps(ENHANCED_ARTIFACT))
 LOW_SPEED_ENHANCED_ARTIFACT["gate"]["n_on_rpm"] = 1000.0
 LOW_SPEED_ENHANCED_ARTIFACT["capacity"]["minimum_active_rpm"] = 1000.0
+
+CUBIC_ARTIFACT = {
+    "model_type": "physics_p",
+    "schema_version": 1,
+    "gate": {"mode": "hard", "n_on_rpm": 1000.0, "width_rpm": 10.0},
+    "capacity": {
+        "model": CUBIC_CAPACITY_MODEL,
+        "coefficients": [1.0] + [0.0] * (len(CUBIC_CAPACITY_FEATURE_NAMES) - 1),
+        "feature_names": list(CUBIC_CAPACITY_FEATURE_NAMES),
+        "minimum_active_rpm": 1000.0,
+        "n_pump_ref_rpm": 2000.0,
+        "q_upper_w": 4800.0,
+    },
+}
 
 
 def make_row(scenario_id, split, n_comp, n_pump, t_cool, t_ambient, target):
@@ -183,6 +199,26 @@ def synthetic_dynamic_frame():
 
 
 class PhysicsCapacityTests(unittest.TestCase):
+    def test_cubic_single_model_declares_terms_and_uses_hard_boundary(self):
+        validate_physics_artifact(CUBIC_ARTIFACT)
+        capacity = CUBIC_ARTIFACT["capacity"]
+        self.assertEqual(capacity["model"], "single_cubic_v1")
+        self.assertEqual(len(capacity["coefficients"]), 20)
+        self.assertEqual(len(capacity["feature_names"]), 20)
+        self.assertEqual(len(set(capacity["feature_names"])), 20)
+        self.assertEqual(
+            evaluate_physics_capacity(
+                999.0, 2400.0, 25.0, 30.0, artifact=CUBIC_ARTIFACT
+            ),
+            0.0,
+        )
+        self.assertEqual(
+            evaluate_physics_capacity(
+                1000.0, 2400.0, 25.0, 30.0, artifact=CUBIC_ARTIFACT
+            ),
+            1000.0,
+        )
+
     def test_enhanced_single_model_has_exact_physical_activation_boundary(self):
         self.assertEqual(
             evaluate_physics_capacity(
@@ -774,6 +810,27 @@ class PhysicsFitTests(unittest.TestCase):
             [evaluate_physics_capacity(*row, artifact=artifact) for row in features]
         )
         np.testing.assert_allclose(_predict(parameters, features), runtime, atol=1e-12)
+
+    def test_vectorized_cubic_formula_matches_runtime_evaluator(self):
+        parameters = np.linspace(-0.03, 0.08, 20)
+        features = np.array(
+            [
+                [999.0, 1600.0, 15.0, 20.0],
+                [1000.0, 2400.0, 25.0, 30.0],
+                [4200.0, 3200.0, 30.0, 35.0],
+                [6000.0, 4800.0, 35.0, 40.0],
+            ],
+            dtype=float,
+        )
+        artifact = _artifact_from_parameters(parameters, CUBIC_CAPACITY_MODEL)
+        runtime = np.array(
+            [evaluate_physics_capacity(*row, artifact=artifact) for row in features]
+        )
+        np.testing.assert_allclose(
+            _predict(parameters, features, CUBIC_CAPACITY_MODEL),
+            runtime,
+            atol=1e-12,
+        )
 
     def test_synthetic_fit_is_valid_bounded_monotonic_and_accurate(self):
         artifact = fit_physics_artifact(synthetic_frame())

@@ -56,6 +56,7 @@ SCHEDULE_PARAMETER_NAMES = {
 
 LEGACY_CAPACITY_MODEL = "legacy_six_term"
 ENHANCED_CAPACITY_MODEL = "single_enhanced_v1"
+CUBIC_CAPACITY_MODEL = "single_cubic_v1"
 ENHANCED_CAPACITY_FEATURE_NAMES = (
     "base",
     "pump_ratio",
@@ -71,6 +72,28 @@ ENHANCED_CAPACITY_FEATURE_NAMES = (
     "ambient_squared",
     "pump_x_ambient",
     "pump_x_compressor",
+)
+CUBIC_CAPACITY_FEATURE_NAMES = (
+    "base",
+    "compressor_speed",
+    "pump_ratio",
+    "coolant_temperature",
+    "ambient_temperature",
+    "compressor_squared",
+    "compressor_x_pump",
+    "compressor_x_coolant",
+    "compressor_x_ambient",
+    "pump_squared",
+    "pump_x_coolant",
+    "pump_x_ambient",
+    "coolant_squared",
+    "coolant_x_ambient",
+    "compressor_squared_x_pump",
+    "compressor_x_pump_squared",
+    "compressor_x_pump_x_coolant",
+    "compressor_x_pump_x_ambient",
+    "compressor_x_coolant_x_ambient",
+    "coolant_cubed",
 )
 
 
@@ -217,8 +240,70 @@ def enhanced_active_capacity_w(
         pump_ratio * ambient,
         pump_ratio * compressor,
     )
-    gain = sum(coefficient * feature for coefficient, feature in zip(values, features))
+    gain = sum(
+        coefficient * feature for coefficient, feature in zip(values, features)
+    )
     return _finite_number(n_comp * gain, "enhanced_active_capacity_w result")
+
+
+def cubic_active_capacity_w(
+    coefficients: object,
+    n_comp_rpm: object,
+    n_pump_rpm: object,
+    t_cool_c: object,
+    t_ambient_c: object,
+    n_pump_ref_rpm: object,
+) -> float:
+    if (
+        not isinstance(coefficients, (list, tuple, np.ndarray))
+        or len(coefficients) != len(CUBIC_CAPACITY_FEATURE_NAMES)
+    ):
+        raise ValueError(
+            "cubic coefficients must contain exactly "
+            f"{len(CUBIC_CAPACITY_FEATURE_NAMES)} values"
+        )
+    values = [
+        _finite_number(value, f"coefficients[{index}]")
+        for index, value in enumerate(coefficients)
+    ]
+    n_comp = _finite_number(n_comp_rpm, "n_comp_rpm")
+    n_pump = _finite_number(n_pump_rpm, "n_pump_rpm")
+    t_cool = _finite_number(t_cool_c, "t_cool_c")
+    t_ambient = _finite_number(t_ambient_c, "t_ambient_c")
+    n_pump_ref = _finite_number(n_pump_ref_rpm, "n_pump_ref_rpm")
+    if n_pump <= 0.0:
+        raise ValueError("n_pump_rpm must be greater than zero")
+    if n_pump_ref <= 0.0:
+        raise ValueError("n_pump_ref_rpm must be greater than zero")
+
+    compressor = (n_comp - 4000.0) / 2000.0
+    pump_ratio = n_pump_ref / n_pump
+    coolant = (t_cool - 27.5) / 7.5
+    ambient = (t_ambient - 30.0) / 10.0
+    features = (
+        1.0,
+        compressor,
+        pump_ratio,
+        coolant,
+        ambient,
+        compressor**2,
+        compressor * pump_ratio,
+        compressor * coolant,
+        compressor * ambient,
+        pump_ratio**2,
+        pump_ratio * coolant,
+        pump_ratio * ambient,
+        coolant**2,
+        coolant * ambient,
+        compressor**2 * pump_ratio,
+        compressor * pump_ratio**2,
+        compressor * pump_ratio * coolant,
+        compressor * pump_ratio * ambient,
+        compressor * coolant * ambient,
+        coolant**3,
+    )
+    gain = sum(coefficient * feature for coefficient, feature in zip(values, features))
+    return _finite_number(n_comp * gain, "cubic_active_capacity_w result")
 
 
 def validate_physics_artifact(artifact: object) -> dict:
@@ -239,7 +324,11 @@ def validate_physics_artifact(artifact: object) -> dict:
         n_on = _finite_number(gate.get("n_on_rpm"), "gate.n_on_rpm")
         width = _finite_number(gate.get("width_rpm"), "gate.width_rpm")
         capacity_model = capacity.get("model", LEGACY_CAPACITY_MODEL)
-        if capacity_model not in {LEGACY_CAPACITY_MODEL, ENHANCED_CAPACITY_MODEL}:
+        if capacity_model not in {
+            LEGACY_CAPACITY_MODEL,
+            ENHANCED_CAPACITY_MODEL,
+            CUBIC_CAPACITY_MODEL,
+        }:
             raise ValueError(f"Unsupported capacity.model: {capacity_model!r}")
         if capacity_model == LEGACY_CAPACITY_MODEL:
             if not 1900.0 <= n_on <= 2000.0:
@@ -249,11 +338,11 @@ def validate_physics_artifact(artifact: object) -> dict:
         if not 10.0 <= width <= 80.0:
             raise ValueError("gate.width_rpm must be within [10, 80]")
         coefficients = capacity.get("coefficients")
-        expected_coefficient_count = (
-            6
-            if capacity_model == LEGACY_CAPACITY_MODEL
-            else len(ENHANCED_CAPACITY_FEATURE_NAMES)
-        )
+        expected_coefficient_count = {
+            LEGACY_CAPACITY_MODEL: 6,
+            ENHANCED_CAPACITY_MODEL: len(ENHANCED_CAPACITY_FEATURE_NAMES),
+            CUBIC_CAPACITY_MODEL: len(CUBIC_CAPACITY_FEATURE_NAMES),
+        }[capacity_model]
         if (
             not isinstance(coefficients, list)
             or len(coefficients) != expected_coefficient_count
@@ -267,13 +356,18 @@ def validate_physics_artifact(artifact: object) -> dict:
         gate_mode = gate.get("mode", "smooth")
         if gate_mode not in {"smooth", "hard"}:
             raise ValueError("gate.mode must be smooth or hard")
-        if capacity_model == ENHANCED_CAPACITY_MODEL:
+        if capacity_model in {ENHANCED_CAPACITY_MODEL, CUBIC_CAPACITY_MODEL}:
             if gate_mode != "hard":
-                raise ValueError("single_enhanced_v1 requires gate.mode == 'hard'")
+                raise ValueError(f"{capacity_model} requires gate.mode == 'hard'")
             feature_names = capacity.get("feature_names")
-            if feature_names != list(ENHANCED_CAPACITY_FEATURE_NAMES):
+            expected_feature_names = (
+                ENHANCED_CAPACITY_FEATURE_NAMES
+                if capacity_model == ENHANCED_CAPACITY_MODEL
+                else CUBIC_CAPACITY_FEATURE_NAMES
+            )
+            if feature_names != list(expected_feature_names):
                 raise ValueError(
-                    "capacity.feature_names must match the enhanced physical terms"
+                    "capacity.feature_names must match the declared physical terms"
                 )
             minimum_active = _finite_number(
                 capacity.get("minimum_active_rpm"),
@@ -412,11 +506,16 @@ def evaluate_physics_capacity(
         lower, upper = domain[name]
         clipped[name] = max(float(lower), min(float(upper), finite))
     capacity_model = capacity.get("model", LEGACY_CAPACITY_MODEL)
-    if capacity_model == ENHANCED_CAPACITY_MODEL:
+    if capacity_model in {ENHANCED_CAPACITY_MODEL, CUBIC_CAPACITY_MODEL}:
         if finite_inputs["n_comp_rpm"] < float(capacity["minimum_active_rpm"]):
             return 0.0
         gate_value = 1.0
-        active = enhanced_active_capacity_w(
+        evaluator = (
+            enhanced_active_capacity_w
+            if capacity_model == ENHANCED_CAPACITY_MODEL
+            else cubic_active_capacity_w
+        )
+        active = evaluator(
             capacity["coefficients"],
             clipped["n_comp_rpm"],
             clipped["n_pump_rpm"],
