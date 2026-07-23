@@ -17,6 +17,7 @@ from fit_mpc_physics_predictor import (
     _artifact_from_parameters,
     _dynamic_artifact,
     _plate_refinement_artifact,
+    _short_response_artifact,
     _supply_refinement_artifact,
     _predict,
     _validate_output_path,
@@ -24,6 +25,7 @@ from fit_mpc_physics_predictor import (
     fit_physics_dynamic,
     fit_physics_predictor,
     refine_physics_plate,
+    refine_physics_short_response,
     refine_physics_supply,
 )
 from mpc_physics_predictor import (
@@ -365,6 +367,39 @@ class PhysicsCapacityTests(unittest.TestCase):
 
 
 class PhysicsDynamicTests(unittest.TestCase):
+    def test_direct_evaporator_response_bypasses_condenser_lag(self):
+        artifact = json.loads(json.dumps(CUBIC_ARTIFACT))
+        artifact["dynamic"] = json.loads(json.dumps(DEFAULT_DYNAMIC_PARAMETERS))
+        artifact["dynamic"].update(
+            evap_response_model="direct",
+            evap_input_delay_s=0.0,
+            tau_evap_s=45.0,
+        )
+        artifact["thermal"] = json.loads(json.dumps(DEFAULT_THERMAL_PARAMETERS))
+        state = initialize_physics_state(
+            2000.0,
+            2400.0,
+            0.0,
+            1000.0,
+            30.0,
+            30.0,
+            30.0,
+            30.0,
+            30.0,
+        )
+
+        result = step_physics_predictor(
+            state,
+            2000.0,
+            2400.0,
+            0.0,
+            30.0,
+            5.0,
+            artifact,
+        )
+
+        self.assertAlmostEqual(result.q_evap_w, 1100.0)
+
     def dynamic_artifact(self):
         artifact = json.loads(json.dumps(KNOWN_ARTIFACT))
         artifact["dynamic"] = json.loads(json.dumps(DEFAULT_DYNAMIC_PARAMETERS))
@@ -688,6 +723,61 @@ class PhysicsArtifactTests(unittest.TestCase):
 
 
 class PhysicsFitTests(unittest.TestCase):
+    def short_response_base(self):
+        base = json.loads(json.dumps(KNOWN_ARTIFACT))
+        base["dynamic"] = json.loads(json.dumps(DEFAULT_DYNAMIC_PARAMETERS))
+        base["thermal"] = json.loads(json.dumps(DEFAULT_THERMAL_PARAMETERS))
+        return base
+
+    def test_short_response_artifact_changes_only_evaporator_response_structure(self):
+        base = self.short_response_base()
+
+        refined = _short_response_artifact(base)
+
+        self.assertEqual(refined["thermal"], base["thermal"])
+        for name, value in base["dynamic"].items():
+            expected = {
+                "evap_input_delay_s": 0.0,
+                "tau_evap_s": 45.0,
+            }.get(name, value)
+            self.assertEqual(refined["dynamic"][name], expected)
+        self.assertEqual(refined["dynamic"]["evap_response_model"], "direct")
+
+    def test_short_response_refinement_selects_only_validation_improvement(self):
+        base = self.short_response_base()
+        with patch(
+            "fit_mpc_physics_predictor._dynamic_validation_metric",
+            side_effect=[1.0, 0.5],
+        ):
+            refined = refine_physics_short_response(
+                base, synthetic_dynamic_frame()
+            )
+
+        self.assertEqual(refined["thermal"], base["thermal"])
+        self.assertEqual(refined["dynamic"]["evap_response_model"], "direct")
+        self.assertEqual(refined["dynamic"]["evap_input_delay_s"], 0.0)
+        self.assertEqual(refined["dynamic"]["tau_evap_s"], 45.0)
+        metadata = refined["fit"]["short_response_refinement"]
+        self.assertTrue(metadata["selected"])
+        self.assertEqual(metadata["selection_source"], "validation_only")
+        self.assertEqual(metadata["validation_improvement"], 0.5)
+
+    def test_short_response_refinement_retains_base_without_improvement(self):
+        base = self.short_response_base()
+        with patch(
+            "fit_mpc_physics_predictor._dynamic_validation_metric",
+            side_effect=[1.0, 1.2],
+        ):
+            refined = refine_physics_short_response(
+                base, synthetic_dynamic_frame()
+            )
+
+        self.assertEqual(refined["dynamic"], base["dynamic"])
+        self.assertEqual(refined["thermal"], base["thermal"])
+        metadata = refined["fit"]["short_response_refinement"]
+        self.assertFalse(metadata["selected"])
+        self.assertAlmostEqual(metadata["validation_improvement"], -0.2)
+
     def test_known_coolant_cp_is_fixed_and_not_fitted(self):
         self.assertEqual(PHYSICAL_COOLANT_CP_J_KG_K, 3391.0)
         self.assertEqual(
@@ -1016,8 +1106,17 @@ class PhysicsFitTests(unittest.TestCase):
         metadata = artifact["fit"]["dynamic_fit"]
         self.assertEqual(
             metadata["q_cond_role"],
-            "internal_refrigeration_lag_not_condenser_prediction",
+            "independent_internal_lag_not_evaporator_driver",
         )
+        self.assertEqual(metadata["evap_response_model"], "direct")
+        self.assertEqual(
+            metadata["evap_input_delay_selection"],
+            "fixed_zero_for_direct_response",
+        )
+        self.assertEqual(metadata["tau_evap_selection"], "fixed_plant_45_s")
+        self.assertEqual(artifact["dynamic"]["evap_response_model"], "direct")
+        self.assertEqual(artifact["dynamic"]["evap_input_delay_s"], 0.0)
+        self.assertEqual(artifact["dynamic"]["tau_evap_s"], 45.0)
         self.assertEqual(metadata["excluded_observation_fields"], ["q_cond_eff_w"])
         self.assertEqual(metadata["training_horizons_steps"], [10, 20, 60])
         self.assertEqual(metadata["selection_source"], "validation_only")

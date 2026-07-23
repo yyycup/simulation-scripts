@@ -53,6 +53,7 @@ SCHEDULE_PARAMETER_NAMES = {
     "tau_cond_schedule_s",
     "tau_evap_schedule_s",
 }
+EVAP_RESPONSE_MODELS = {"cascaded", "direct"}
 
 LEGACY_CAPACITY_MODEL = "legacy_six_term"
 ENHANCED_CAPACITY_MODEL = "single_enhanced_v1"
@@ -419,12 +420,23 @@ def validate_physics_artifact(artifact: object) -> dict:
             required_dynamic = set(DEFAULT_DYNAMIC_PARAMETERS)
             if model == "scheduled":
                 required_dynamic |= SCHEDULE_PARAMETER_NAMES
-            if set(dynamic) != required_dynamic:
+            allowed_dynamic = required_dynamic | {"evap_response_model"}
+            dynamic_keys = frozenset(dynamic)
+            if dynamic_keys not in {
+                frozenset(required_dynamic),
+                frozenset(allowed_dynamic),
+            }:
                 raise ValueError(
-                    f"dynamic keys must be exactly {sorted(required_dynamic)}"
+                    "dynamic keys must contain the standard fields and may add "
+                    "evap_response_model"
+                )
+            evap_response_model = dynamic.get("evap_response_model", "cascaded")
+            if evap_response_model not in EVAP_RESPONSE_MODELS:
+                raise ValueError(
+                    "dynamic.evap_response_model must be cascaded or direct"
                 )
             for name, value in dynamic.items():
-                if name == "time_constant_model":
+                if name in {"time_constant_model", "evap_response_model"}:
                     continue
                 number = _finite_number(value, f"dynamic.{name}")
                 if name in SCHEDULE_PARAMETER_NAMES:
@@ -560,8 +572,8 @@ def lag_step(previous: object, target: object, dt_s: object, tau_s: object) -> f
 def consumed_parameter_names(artifact: object = None) -> set[str]:
     selected = DEFAULT_PHYSICS_ARTIFACT if artifact is None else artifact
     validate_physics_artifact(selected)
-    names = set(DEFAULT_DYNAMIC_PARAMETERS) | set(DEFAULT_THERMAL_PARAMETERS)
     dynamic = selected.get("dynamic", DEFAULT_DYNAMIC_PARAMETERS)
+    names = set(dynamic) | set(DEFAULT_THERMAL_PARAMETERS)
     if dynamic["time_constant_model"] == "scheduled":
         names |= SCHEDULE_PARAMETER_NAMES
     return names
@@ -707,7 +719,9 @@ def step_physics_predictor(
     )
     q_evap = lag_step(
         state.q_evap_w,
-        q_cond,
+        q_steady
+        if dynamic.get("evap_response_model", "cascaded") == "direct"
+        else q_cond,
         dt,
         _time_constant(dynamic, "tau_evap_s", "tau_evap_schedule_s", load_coordinate),
     )

@@ -559,7 +559,12 @@ def fit_physics_predictor(
     return artifact
 
 
-def _dynamic_artifact(base_artifact: dict, parameters: np.ndarray, model: str) -> dict:
+def _dynamic_artifact(
+    base_artifact: dict,
+    parameters: np.ndarray,
+    model: str,
+    evap_response_model: str | None = None,
+) -> dict:
     artifact = json.loads(json.dumps(base_artifact))
     base_count = len(DYNAMIC_NUMERIC_KEYS) + len(THERMAL_KEYS)
     if parameters.shape != (base_count + (len(SCHEDULE_KEYS) if model == "scheduled" else 0),):
@@ -578,6 +583,8 @@ def _dynamic_artifact(base_artifact: dict, parameters: np.ndarray, model: str) -
     if model == "scheduled":
         for index, name in enumerate(SCHEDULE_KEYS):
             artifact["dynamic"][name] = float(parameters[base_count + index])
+    if evap_response_model is not None:
+        artifact["dynamic"]["evap_response_model"] = evap_response_model
     validate_physics_artifact(artifact)
     return artifact
 
@@ -655,11 +662,28 @@ def _fit_dynamic_candidate(
         upper = np.concatenate((DYNAMIC_UPPER, np.full(len(SCHEDULE_KEYS), 100.0)))
     else:
         start = DYNAMIC_START.copy()
-        lower = DYNAMIC_LOWER
-        upper = DYNAMIC_UPPER
+        lower = DYNAMIC_LOWER.copy()
+        upper = DYNAMIC_UPPER.copy()
+    delay_index = DYNAMIC_NUMERIC_KEYS.index("evap_input_delay_s")
+    tau_evap_index = DYNAMIC_NUMERIC_KEYS.index("tau_evap_s")
+    lower[delay_index], upper[delay_index], start[delay_index] = (
+        0.0,
+        1e-9,
+        0.5e-9,
+    )
+    lower[tau_evap_index], upper[tau_evap_index], start[tau_evap_index] = (
+        45.0,
+        45.0 + 1e-9,
+        45.0 + 0.5e-9,
+    )
 
     def residual(parameters: np.ndarray) -> np.ndarray:
-        artifact = _dynamic_artifact(base_artifact, parameters, model)
+        artifact = _dynamic_artifact(
+            base_artifact,
+            parameters,
+            model,
+            evap_response_model="direct",
+        )
         dynamic_errors = _dynamic_errors(artifact, train)
         regularization = 0.05 * (parameters - start) / np.maximum(upper - lower, 1e-9)
         return np.concatenate((dynamic_errors, regularization))
@@ -672,6 +696,8 @@ def _fit_dynamic_candidate(
         tr_solver="lsmr",
     )
     parameters = np.asarray(result.x, dtype=float)
+    parameters[delay_index] = 0.0
+    parameters[tau_evap_index] = 45.0
     if (
         not result.success
         or parameters.shape != start.shape
@@ -680,7 +706,15 @@ def _fit_dynamic_candidate(
         or np.any(parameters > upper)
     ):
         raise RuntimeError(f"Dynamic {model} fitting failed")
-    return _dynamic_artifact(base_artifact, parameters, model), result
+    return (
+        _dynamic_artifact(
+            base_artifact,
+            parameters,
+            model,
+            evap_response_model="direct",
+        ),
+        result,
+    )
 
 
 def _dynamic_validation_metric(artifact: dict, validation: pd.DataFrame) -> float | None:
@@ -693,6 +727,63 @@ def _dynamic_validation_metric(artifact: dict, validation: pd.DataFrame) -> floa
     if not math.isfinite(metric):
         raise RuntimeError("Dynamic validation metric is not finite")
     return metric
+
+
+def _short_response_artifact(base_artifact: dict) -> dict:
+    artifact = json.loads(json.dumps(base_artifact))
+    artifact["dynamic"].update(
+        evap_response_model="direct",
+        evap_input_delay_s=0.0,
+        tau_evap_s=45.0,
+    )
+    validate_physics_artifact(artifact)
+    return artifact
+
+
+def refine_physics_short_response(
+    base_artifact: dict,
+    dynamic_frame: pd.DataFrame,
+) -> dict:
+    validate_physics_artifact(base_artifact)
+    if "dynamic" not in base_artifact or "thermal" not in base_artifact:
+        raise ValueError("Short-response refinement requires a dynamic physics artifact")
+    validate_identification_frame(dynamic_frame)
+    validation = dynamic_frame.loc[dynamic_frame["split"] == "validation"].copy()
+    _validate_dynamic_subset(validation, "validation", allow_empty=True)
+
+    candidate = _short_response_artifact(base_artifact)
+    base_metric = _dynamic_validation_metric(base_artifact, validation)
+    candidate_metric = _dynamic_validation_metric(candidate, validation)
+    selected = candidate
+    if base_metric is not None and candidate_metric is not None:
+        if candidate_metric >= base_metric:
+            selected = json.loads(json.dumps(base_artifact))
+    improvement = None
+    if (
+        base_metric is not None
+        and candidate_metric is not None
+        and base_metric > 0.0
+    ):
+        improvement = (base_metric - candidate_metric) / base_metric
+
+    selected.setdefault("fit", {})["short_response_refinement"] = {
+        "fit_status": (
+            "validated" if not validation.empty else "mechanical_smoke_unvalidated"
+        ),
+        "selection_source": (
+            "validation_only" if not validation.empty else "plant_structure"
+        ),
+        "selected": selected is candidate,
+        "evap_response_model": "direct",
+        "evap_input_delay_s": 0.0,
+        "tau_evap_s": 45.0,
+        "all_other_dynamic_and_thermal_parameters_frozen": True,
+        "base_validation_weighted_mae": base_metric,
+        "candidate_validation_weighted_mae": candidate_metric,
+        "validation_improvement": improvement,
+    }
+    validate_physics_artifact(selected)
+    return selected
 
 
 def _supply_refinement_artifact(base_artifact: dict) -> dict:
@@ -866,7 +957,12 @@ def fit_physics_dynamic(base_artifact: dict, dynamic_frame: pd.DataFrame) -> dic
         "constant_validation_weighted_mae": constant_metric,
         "scheduled_validation_weighted_mae": scheduled_metric,
         "scheduled_candidate_status": scheduled_status,
-        "q_cond_role": "internal_refrigeration_lag_not_condenser_prediction",
+        "evap_response_model": selected["dynamic"].get(
+            "evap_response_model", "cascaded"
+        ),
+        "evap_input_delay_selection": "fixed_zero_for_direct_response",
+        "tau_evap_selection": "fixed_plant_45_s",
+        "q_cond_role": "independent_internal_lag_not_evaporator_driver",
         "excluded_observation_fields": ["q_cond_eff_w"],
         "training_horizons_steps": list(TRAINING_HORIZONS),
         "train_scenarios": int(train["scenario_id"].nunique()),
@@ -903,6 +999,7 @@ def main() -> None:
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--steady-csv")
     source.add_argument("--dynamic-base")
+    source.add_argument("--short-response-base")
     source.add_argument("--plate-refinement-base")
     source.add_argument("--supply-refinement-base")
     parser.add_argument("--dynamic-csv")
@@ -922,6 +1019,14 @@ def main() -> None:
             require_validated=True,
         )
         artifact = fit_physics_dynamic(base_artifact, dynamic_frame)
+    elif arguments.short_response_base:
+        if dynamic_frame is None:
+            parser.error("--short-response-base requires --dynamic-csv")
+        base_artifact = load_physics_artifact(
+            arguments.short_response_base,
+            require_validated=True,
+        )
+        artifact = refine_physics_short_response(base_artifact, dynamic_frame)
     elif arguments.supply_refinement_base:
         if dynamic_frame is None:
             parser.error("--supply-refinement-base requires --dynamic-csv")
