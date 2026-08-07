@@ -109,7 +109,28 @@ import pandas as pd
 root = Path(r"outputs/p_mpc_operational_v1/displacement_restore_1p00_v1")
 for scene in ("peak_smoke60", "freq_smoke60"):
     summary = pd.read_csv(root / scene / "operational_summary.csv").iloc[0]
+    stem = (
+        "peak_physics_p_operational_steps60_horizon14.csv"
+        if scene.startswith("peak")
+        else "freq_physics_p_operational_steps60_horizon12.csv"
+    )
+    frame = pd.read_csv(root / scene / "mpc" / stem)
+    required_finite_columns = [
+        "Average temperature",
+        "Coolant temperature",
+        "Compressor command",
+        "Pump command",
+        "MPC solve time",
+        "MPC predicted battery temperature +1 step",
+        "MPC predicted battery temperature horizon end",
+        "MPC predicted coolant temperature horizon end",
+        "MPC predicted mean evaporator cooling power",
+    ]
     assert int(summary["steps"]) == 60
+    assert len(frame) == 60
+    assert np.isfinite(
+        frame[required_finite_columns].apply(pd.to_numeric).to_numpy()
+    ).all()
     assert float(summary["compressor_displacement_scale"]) == 1.0
     assert float(summary["solve_success_rate"]) == 1.0
     assert float(summary["prediction_domain_valid_rate"]) == 1.0
@@ -118,7 +139,7 @@ for scene in ("peak_smoke60", "freq_smoke60"):
 '@ | & 'C:\Users\24776\miniforge3\envs\btms\python.exe' -
 ```
 
-Expected: `peak_smoke60 PASS`和`freq_smoke60 PASS`。任一断言失败时停止，不运行完整工况。
+Expected: `peak_smoke60 PASS`和`freq_smoke60 PASS`。单向标准流模式不适用的换向诊断列可以为空；上述关键运行与Physics-P预测列必须全部有限。任一关键断言失败时停止，不运行完整工况。
 
 ### Task 3: 运行1.00倍完整工况并作出晋升判断
 
