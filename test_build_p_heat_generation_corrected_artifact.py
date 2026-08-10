@@ -1,5 +1,6 @@
 import copy
 import unittest
+from pathlib import Path
 
 from build_p_heat_generation_corrected_artifact import (
     DEFAULT_SCALE,
@@ -69,6 +70,20 @@ class BuildPHeatGenerationCorrectedArtifactTests(unittest.TestCase):
             metadata["corrected_thermal_parameters"],
             ["battery_heat_generation_scale", "coolant_mass_flow_ref_kg_s"],
         )
+
+    def test_build_stores_project_calibration_source_as_relative_path(self):
+        absolute_source = (
+            Path(__file__).resolve().parent / "outputs" / "calibration.csv"
+        )
+
+        corrected = build_corrected_artifact(
+            copy.deepcopy(DEFAULT_PHYSICS_ARTIFACT),
+            scale=0.74,
+            calibration_source=str(absolute_source),
+        )
+
+        metadata = corrected["fit"]["battery_heat_generation_correction"]
+        self.assertEqual(metadata["calibration_source"], "outputs/calibration.csv")
 
 
 if __name__ == "__main__":

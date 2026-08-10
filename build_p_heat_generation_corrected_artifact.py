@@ -16,6 +16,20 @@ from mpc_physics_predictor import load_physics_artifact, validate_physics_artifa
 
 DEFAULT_SCALE = 0.74
 DEFAULT_HORIZONS_S = (5.0, 25.0, 50.0, 100.0, 225.0, 300.0)
+PROJECT_ROOT = Path(__file__).resolve().parent
+
+
+def portable_calibration_source(value: str | Path) -> str:
+    portable_sources = []
+    for raw_source in str(value).split(";"):
+        source = Path(raw_source.strip())
+        if source.is_absolute():
+            try:
+                source = source.resolve().relative_to(PROJECT_ROOT)
+            except ValueError:
+                source = Path(source.name)
+        portable_sources.append(source.as_posix())
+    return ";".join(portable_sources)
 
 
 def build_corrected_artifact(
@@ -47,7 +61,7 @@ def build_corrected_artifact(
     corrected.setdefault("fit", {})["battery_heat_generation_correction"] = {
         "fit_status": "validated",
         "method": "actual_future_command_replay",
-        "calibration_source": str(calibration_source),
+        "calibration_source": portable_calibration_source(calibration_source),
         "battery_heat_generation_scale": selected_scale,
         "capacity_model_frozen": True,
         "dynamic_model_frozen": True,
@@ -129,7 +143,7 @@ def main() -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     base = load_physics_artifact(args.base_artifact, require_validated=True)
-    source_names = [path.resolve().as_posix() for path in args.input_csv]
+    source_names = [portable_calibration_source(path.resolve()) for path in args.input_csv]
     corrected = build_corrected_artifact(
         base,
         scale=args.scale,

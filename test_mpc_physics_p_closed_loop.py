@@ -1011,6 +1011,24 @@ class MpcPhysicsPClosedLoopTest(unittest.TestCase):
         self.assertEqual(solution["n_comp_applied_rpm"], 2500.0)
         self.assertEqual(solution["comp_command_filter_alpha"], 0.5)
 
+    def test_p_override_rejects_command_filter_alpha_outside_open_closed_unit_interval(self):
+        for invalid_alpha in (0.0, -0.1, 1.1, float("nan")):
+            with self.subTest(invalid_alpha=invalid_alpha):
+                with self.assertRaisesRegex(
+                    ValueError,
+                    r"comp_command_filter_alpha.*\(0, 1\]",
+                ):
+                    flow_mpc.create_mpc_flow_controller(
+                        [560.0, 560.0],
+                        mpc_flow_mode="standard",
+                        case_name="peak",
+                        predictor=PHYSICS_P,
+                        predictor_artifact=_validated_physics_p_artifact(),
+                        physics_p_mpc_overrides={
+                            "comp_command_filter_alpha": invalid_alpha,
+                        },
+                    )
+
 
 if __name__ == "__main__":
     unittest.main()

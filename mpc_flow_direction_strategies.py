@@ -3317,6 +3317,12 @@ def create_mpc_flow_controller(
         normalized_overrides = {}
         for key, value in physics_p_mpc_overrides.items():
             numeric = float(value)
+            if key == "comp_command_filter_alpha" and not (
+                np.isfinite(numeric) and 0.0 < numeric <= 1.0
+            ):
+                raise ValueError(
+                    "comp_command_filter_alpha override must be finite and in (0, 1]"
+                )
             if not np.isfinite(numeric) or numeric < 0.0:
                 raise ValueError(f"{key} override must be finite and nonnegative")
             normalized_overrides[key] = numeric

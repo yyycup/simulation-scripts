@@ -179,7 +179,7 @@
     "battery_heat_generation_correction": {
       "fit_status": "validated",
       "method": "actual_future_command_replay",
-      "calibration_source": "C:/Users/24776/PycharmProjects/PythonProject/集成仿真多种控制/.worktrees/dual-mpc-predictors/outputs/p_mpc_strict_ablation_v1/full_v3_physics_p_20260731/peak/mpc/peak_physics_p_strict_ablation_steps1280_horizon60.csv;C:/Users/24776/PycharmProjects/PythonProject/集成仿真多种控制/.worktrees/dual-mpc-predictors/outputs/p_mpc_strict_ablation_v1/full_v3_physics_p_20260731/freq/mpc/freq_physics_p_strict_ablation_steps720_horizon45.csv",
+      "calibration_source": "outputs/p_mpc_strict_ablation_v1/full_v3_physics_p_20260731/peak/mpc/peak_physics_p_strict_ablation_steps1280_horizon60.csv;outputs/p_mpc_strict_ablation_v1/full_v3_physics_p_20260731/freq/mpc/freq_physics_p_strict_ablation_steps720_horizon45.csv",
       "battery_heat_generation_scale": 0.74,
       "capacity_model_frozen": true,
       "dynamic_model_frozen": true,
