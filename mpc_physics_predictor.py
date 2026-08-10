@@ -5,6 +5,7 @@ from numbers import Real
 from pathlib import Path
 
 import numpy as np
+from thermal_batch_config import N_COMP_OFF_RPM
 
 from mpc_predictor_selection import (
     PHYSICS_P,
@@ -45,6 +46,7 @@ DEFAULT_THERMAL_PARAMETERS = {
     "plate_tau_s": 20.0,
     "ambient_conductance_w_k": 3.0,
     "plate_fluid_effectiveness": 1.0,
+    "battery_heat_generation_scale": 1.0,
 }
 
 SCHEDULE_PARAMETER_NAMES = {
@@ -453,25 +455,21 @@ def validate_physics_artifact(artifact: object) -> dict:
 
             if not isinstance(thermal, dict):
                 raise ValueError("thermal must be an object")
-            required_thermal = set(DEFAULT_THERMAL_PARAMETERS) - {
-                "plate_fluid_effectiveness"
-            }
-            standard_thermal = set(DEFAULT_THERMAL_PARAMETERS)
-            allowed_thermal = standard_thermal | {
+            optional_thermal = {
+                "plate_fluid_effectiveness",
+                "battery_heat_generation_scale",
+                "compressor_displacement_scale",
                 "battery_plate_conductance_model"
             }
-            thermal_keys = frozenset(thermal)
-            valid_thermal_keys = {
-                frozenset(required_thermal),
-                frozenset(standard_thermal),
-                frozenset(required_thermal | {"battery_plate_conductance_model"}),
-                frozenset(allowed_thermal),
-            }
-            if thermal_keys not in valid_thermal_keys:
+            required_thermal = set(DEFAULT_THERMAL_PARAMETERS) - optional_thermal
+            thermal_keys = set(thermal)
+            if not required_thermal.issubset(thermal_keys) or not thermal_keys.issubset(
+                required_thermal | optional_thermal
+            ):
                 raise ValueError(
                     "thermal keys must contain the legacy thermal fields and may "
-                    "add plate_fluid_effectiveness and "
-                    "battery_plate_conductance_model"
+                    "add plate_fluid_effectiveness, battery_heat_generation_scale, "
+                    "compressor_displacement_scale, and battery_plate_conductance_model"
                 )
             conductance_model = thermal.get(
                 "battery_plate_conductance_model",
@@ -577,6 +575,60 @@ def evaluate_physics_capacity(
     raw = _finite_number(gate_value * clipped_active, "physics capacity result")
     return max(0.0, min(q_upper, raw))
 
+
+
+def physics_p_startup_fraction_value(
+    n_comp_rpm: object,
+    minimum_active_rpm: object,
+) -> float:
+    speed = _finite_number(n_comp_rpm, "n_comp_rpm")
+    minimum_active = _finite_number(
+        minimum_active_rpm, "minimum_active_rpm"
+    )
+    if minimum_active <= N_COMP_OFF_RPM:
+        raise ValueError("minimum_active_rpm must exceed N_COMP_OFF_RPM")
+    return float(
+        np.clip(
+            (speed - N_COMP_OFF_RPM) / (minimum_active - N_COMP_OFF_RPM),
+            0.0,
+            1.0,
+        )
+    )
+
+
+def evaluate_physics_operating_capacity(
+    n_comp_rpm: object,
+    n_pump_rpm: object,
+    t_cool_c: object,
+    t_ambient_c: object,
+    artifact: object = None,
+) -> float:
+    """Evaluate P capacity across off, startup, and validated running speeds."""
+    selected = DEFAULT_PHYSICS_ARTIFACT if artifact is None else artifact
+    validate_physics_artifact(selected)
+    speed = _finite_number(n_comp_rpm, "n_comp_rpm")
+    capacity = selected["capacity"]
+    model = capacity.get("model", LEGACY_CAPACITY_MODEL)
+    if model not in {ENHANCED_CAPACITY_MODEL, CUBIC_CAPACITY_MODEL}:
+        return evaluate_physics_capacity(
+            speed, n_pump_rpm, t_cool_c, t_ambient_c, artifact=selected
+        )
+
+    minimum_active = float(capacity["minimum_active_rpm"])
+    startup_fraction = physics_p_startup_fraction_value(
+        speed, minimum_active
+    )
+    if startup_fraction <= 0.0:
+        return 0.0
+    active_speed = max(minimum_active, speed)
+    active_capacity = evaluate_physics_capacity(
+        active_speed,
+        n_pump_rpm,
+        t_cool_c,
+        t_ambient_c,
+        artifact=selected,
+    )
+    return startup_fraction * active_capacity
 
 def lag_step(previous: object, target: object, dt_s: object, tau_s: object) -> float:
     previous_value = _finite_number(previous, "previous")
@@ -739,7 +791,7 @@ def step_physics_predictor(
     )
 
     # State order 3-5: P1 steady capacity and cascaded refrigeration dynamics.
-    q_steady = evaluate_physics_capacity(
+    q_steady = evaluate_physics_operating_capacity(
         n_comp_delayed,
         n_pump_delayed,
         state.t_cool_c,
@@ -820,7 +872,10 @@ def step_physics_predictor(
 
     # State order 9-10: battery and coolant energy balances.
     ambient_loss = float(thermal["ambient_conductance_w_k"]) * (state.t_batt_c - ambient)
-    t_batt = state.t_batt_c + dt * (q_gen - q_batt_plate - ambient_loss) / float(
+    q_gen_effective = q_gen * float(
+        thermal.get("battery_heat_generation_scale", 1.0)
+    )
+    t_batt = state.t_batt_c + dt * (q_gen_effective - q_batt_plate - ambient_loss) / float(
         thermal["battery_heat_capacity_j_k"]
     )
     t_cool = state.t_cool_c + dt * flow_capacity * (t_return - state.t_cool_c) / float(

@@ -55,6 +55,21 @@ class MPCParameterSelectionTest(unittest.TestCase):
             "x11_npump_flow_eff",
         ):
             self.assertNotIn(f"self.{old_name}", source, old_name)
+
+    def test_mpc_speed_states_have_physical_solver_bounds(self):
+        source = inspect.getsource(flow_mpc.MPCControllerDual.__init__)
+
+        self.assertIn(
+            "n_comp_state_bounds = (0.0, N_COMP_MAX_RPM)",
+            source,
+        )
+        self.assertIn(
+            "n_pump_state_bounds = (0.0, N_PUMP_MAX_RPM)",
+            source,
+        )
+        self.assertIn('p_domain["n_comp_rpm"]', source)
+        self.assertIn('p_domain["n_pump_rpm"]', source)
+
     def test_selects_peak_params_from_peak_scene_name(self):
         params = select_mpc_params_for_scene("\u8c03\u5cf0")
 
@@ -104,7 +119,7 @@ class MPCParameterSelectionTest(unittest.TestCase):
         self.assertEqual(params.w_dcomp, peak_mpc_params.w_dcomp)
         self.assertEqual(params.w_dpump, peak_mpc_params.w_dpump)
 
-    def test_basic_mpc_objective_uses_only_energy_terms(self):
+    def test_basic_mpc_objective_includes_optional_tracking_and_energy_terms(self):
         source = inspect.getsource(flow_mpc.MPCControllerDual.__init__)
 
         objective = source.split("j_total_expr = (", 1)[1].split(
@@ -113,8 +128,7 @@ class MPCParameterSelectionTest(unittest.TestCase):
         )[0]
 
         self.assertEqual(flow_mpc.MPC_CV_BAND_C, 0.5)
-        self.assertNotIn("w_temp_obj", objective)
-        self.assertNotIn("j_track", objective)
+        self.assertIn("self.mpc_params.w_temp_obj * self.j_track", objective)
         self.assertIn("self.mpc_params.w_energy_comp * self.j_comp", objective)
         self.assertIn("self.mpc_params.w_energy_pump * self.j_pump", objective)
         self.assertNotIn("j_plate_reserve", objective)
@@ -122,6 +136,9 @@ class MPCParameterSelectionTest(unittest.TestCase):
         self.assertNotIn("j_qevap_reserve", objective)
         self.assertNotIn("j_bat_safety", objective)
         self.assertIn("if self.terminal_cost_enabled", objective)
+
+        snapshot_source = inspect.getsource(flow_mpc.MPCControllerDual._objective_snapshot)
+        self.assertIn("self.mpc_params.w_temp_obj * j_track", snapshot_source)
         self.assertIn("self.weighted_j_terminal_path", objective)
 
     def test_create_controller_passes_case_params_to_supervised_mpc(self):

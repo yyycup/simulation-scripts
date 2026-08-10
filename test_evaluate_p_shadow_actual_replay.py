@@ -1,4 +1,5 @@
 import copy
+import inspect
 import unittest
 
 import pandas as pd
@@ -71,6 +72,30 @@ def exact_trajectory_frame():
 
 
 class ActualCommandReplayTests(unittest.TestCase):
+    def test_formal_csv_can_reconstruct_equivalent_plate_temperature(self):
+        artifact, frame = exact_trajectory_frame()
+        conductance = artifact["thermal"]["battery_plate_conductance_w_k"]
+        frame["Battery heat removal rate (kW)"] = (
+            conductance
+            * (
+                frame["Average temperature"]
+                - frame["P_Shadow_T_Plate_Actual_C"]
+            )
+            / 1000.0
+        )
+        frame = frame.drop(columns="P_Shadow_T_Plate_Actual_C")
+
+        details, summary = evaluate_actual_command_replay(
+            frame,
+            artifact,
+            dt_s=5.0,
+            horizons_s=(5.0, 10.0),
+            t_ambient_c=25.0,
+        )
+
+        self.assertTrue((details["abs_error"] < 1e-10).all())
+        self.assertTrue((summary["mae"] < 1e-10).all())
+
     def test_exact_future_commands_reproduce_zero_delay_predictor_trajectory(self):
         artifact, frame = exact_trajectory_frame()
 
@@ -112,6 +137,28 @@ class ActualCommandReplayTests(unittest.TestCase):
         changed_batt = changed.loc[changed["state"] == "T_Batt"].iloc[0]
         self.assertEqual(original_batt["prediction"], changed_batt["prediction"])
         self.assertNotEqual(original_batt["actual"], changed_batt["actual"])
+
+    def test_origin_stride_samples_replay_origins_without_changing_alignment(self):
+        artifact, frame = exact_trajectory_frame()
+        self.assertIn(
+            "origin_stride",
+            inspect.signature(evaluate_actual_command_replay).parameters,
+        )
+
+        details, summary = evaluate_actual_command_replay(
+            frame,
+            artifact,
+            dt_s=5.0,
+            horizons_s=(5.0, 10.0),
+            t_ambient_c=25.0,
+            origin_stride=2,
+        )
+
+        self.assertEqual(set(details["origin_index"]), {0})
+        self.assertEqual(set(details["target_index"]), {1, 2})
+        self.assertEqual(len(details), 2 * 6)
+        self.assertTrue((details["abs_error"] < 1e-10).all())
+        self.assertTrue((summary["mae"] < 1e-10).all())
 
     def test_replay_rejects_horizon_longer_than_available_data(self):
         artifact, frame = exact_trajectory_frame()

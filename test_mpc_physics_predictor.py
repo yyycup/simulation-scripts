@@ -33,6 +33,7 @@ from fit_mpc_physics_predictor import (
 from mpc_physics_predictor import (
     CUBIC_CAPACITY_FEATURE_NAMES,
     CUBIC_CAPACITY_MODEL,
+    DEFAULT_PHYSICS_ARTIFACT,
     DEFAULT_INPUT_DOMAIN,
     DEFAULT_DYNAMIC_PARAMETERS,
     DEFAULT_THERMAL_PARAMETERS,
@@ -42,6 +43,7 @@ from mpc_physics_predictor import (
     _battery_plate_conductance,
     consumed_parameter_names,
     evaluate_physics_capacity,
+    evaluate_physics_operating_capacity,
     initialize_physics_state,
     lag_step,
     load_physics_artifact,
@@ -463,6 +465,57 @@ class PhysicsDynamicTests(unittest.TestCase):
         self.assertAlmostEqual(result.t_batt_c, 30.0)
         self.assertAlmostEqual(result.t_cool_c, 30.0)
 
+    def test_battery_heat_generation_scale_only_scales_battery_energy_input(self):
+        base_artifact = self.dynamic_artifact()
+        corrected_artifact = json.loads(json.dumps(base_artifact))
+        corrected_artifact["thermal"]["battery_heat_generation_scale"] = 0.825
+        state = initialize_physics_state(
+            n_comp_eff_rpm=1000.0,
+            n_pump_eff_rpm=2000.0,
+            q_cond_w=0.0,
+            q_evap_w=0.0,
+            t_supply_c=30.0,
+            t_plate_c=30.0,
+            t_return_c=30.0,
+            t_batt_c=30.0,
+            t_cool_c=30.0,
+        )
+
+        base = step_physics_predictor(
+            state,
+            n_comp_cmd_rpm=1000.0,
+            n_pump_cmd_rpm=2000.0,
+            q_gen_w=1000.0,
+            t_ambient_c=30.0,
+            dt_s=5.0,
+            artifact=base_artifact,
+        )
+        corrected = step_physics_predictor(
+            state,
+            n_comp_cmd_rpm=1000.0,
+            n_pump_cmd_rpm=2000.0,
+            q_gen_w=1000.0,
+            t_ambient_c=30.0,
+            dt_s=5.0,
+            artifact=corrected_artifact,
+        )
+
+        expected = 30.0 + 5.0 * 0.825 * 1000.0 / float(
+            corrected_artifact["thermal"]["battery_heat_capacity_j_k"]
+        )
+        self.assertAlmostEqual(corrected.t_batt_c, expected)
+        self.assertLess(corrected.t_batt_c, base.t_batt_c)
+        for name in vars(base):
+            if name != "t_batt_c":
+                self.assertEqual(getattr(corrected, name), getattr(base, name), name)
+
+    def test_battery_heat_generation_scale_must_be_positive(self):
+        artifact = self.dynamic_artifact()
+        artifact["thermal"]["battery_heat_generation_scale"] = 0.0
+
+        with self.assertRaisesRegex(ValueError, "battery_heat_generation_scale"):
+            validate_physics_artifact(artifact)
+
     def test_hot_battery_heat_is_stored_in_cold_plate_state(self):
         artifact = self.dynamic_artifact()
         artifact["dynamic"]["supply_delay_s"] = 0.0
@@ -636,6 +689,22 @@ class PhysicsDynamicTests(unittest.TestCase):
 
 
 class PhysicsArtifactTests(unittest.TestCase):
+    def test_compressor_displacement_scale_is_optional_and_must_be_positive(self):
+        artifact = json.loads(json.dumps(DEFAULT_PHYSICS_ARTIFACT))
+        artifact["thermal"]["compressor_displacement_scale"] = 0.8
+        try:
+            validated = validate_physics_artifact(artifact)
+        except Exception as exc:
+            self.fail(f"valid displacement scale was rejected: {exc}")
+        self.assertEqual(
+            validated["thermal"]["compressor_displacement_scale"],
+            0.8,
+        )
+
+        artifact["thermal"]["compressor_displacement_scale"] = 0.0
+        with self.assertRaisesRegex(ValueError, "compressor_displacement_scale"):
+            validate_physics_artifact(artifact)
+
     def test_battery_plate_conductance_model_is_strictly_validated(self):
         artifact = json.loads(json.dumps(CUBIC_ARTIFACT))
         artifact["dynamic"] = json.loads(json.dumps(DEFAULT_DYNAMIC_PARAMETERS))
@@ -738,6 +807,24 @@ class PhysicsArtifactTests(unittest.TestCase):
             ),
             0.0,
         )
+
+    def test_operating_capacity_has_off_point_and_continuous_startup_transition(self):
+        q_at_minimum = evaluate_physics_capacity(
+            1000.0, 2400.0, 25.0, 30.0, artifact=LOW_SPEED_ENHANCED_ARTIFACT
+        )
+        q_off = evaluate_physics_operating_capacity(
+            300.0, 2400.0, 25.0, 30.0, artifact=LOW_SPEED_ENHANCED_ARTIFACT
+        )
+        q_startup = evaluate_physics_operating_capacity(
+            650.0, 2400.0, 25.0, 30.0, artifact=LOW_SPEED_ENHANCED_ARTIFACT
+        )
+        q_active = evaluate_physics_operating_capacity(
+            1000.0, 2400.0, 25.0, 30.0, artifact=LOW_SPEED_ENHANCED_ARTIFACT
+        )
+
+        self.assertEqual(q_off, 0.0)
+        self.assertAlmostEqual(q_startup, 0.5 * q_at_minimum)
+        self.assertAlmostEqual(q_active, q_at_minimum)
 
     def test_require_validated_loader_rejects_smoke_and_accepts_validated(self):
         with tempfile.TemporaryDirectory() as temp_dir:

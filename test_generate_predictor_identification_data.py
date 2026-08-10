@@ -1104,7 +1104,12 @@ class DynamicRolloutTest(unittest.TestCase):
         self.assertEqual(
             row["source_model"], "thermal_loop.simulate_thermal_loop_step"
         )
-        initialize_state.assert_called_once_with(3200.0, 2400.0)
+        initialize_state.assert_called_once_with(
+            3200.0,
+            2400.0,
+            initial_temp_k=299.15,
+            dt=5.0,
+        )
         simulate_step.assert_called_once()
         self.assertEqual(simulate_step.call_args.kwargs["dynamic_state"], {"token": "initial"})
         self.assertTrue(simulate_step.call_args.kwargs["is_reversed"])
@@ -1220,7 +1225,10 @@ class DynamicRolloutTest(unittest.TestCase):
         self.assertEqual(len(self.FakePack.instances), 2)
         self.assertEqual(
             initialize_state.call_args_list,
-            [call(3200.0, 2400.0), call(3500.0, 2600.0)],
+            [
+                call(3200.0, 2400.0, initial_temp_k=299.15, dt=5.0),
+                call(3500.0, 2600.0, initial_temp_k=299.15, dt=5.0),
+            ],
         )
         self.assertEqual(
             simulate_step.call_args_list[0].kwargs["dynamic_state"],

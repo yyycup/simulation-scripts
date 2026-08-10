@@ -1,6 +1,7 @@
 ﻿import numpy as np
 
 from thermal_batch_config import (
+    INITIAL_TEMP_C,
     MPC_MIN_HOLD_TIME_S,
     MPC_REV_DELTA_T_LIM_C,
     MPC_REV_GAMMA_HOT_LIM,
@@ -76,7 +77,21 @@ def is_reversed_from_direction(direction):
     return direction < 0
 
 
-def initialize_refrigeration_dynamic_state(N_comp_cmd, N_pump_cmd):
+def initialize_refrigeration_dynamic_state(
+    N_comp_cmd,
+    N_pump_cmd,
+    initial_temp_k=INITIAL_TEMP_C + 273.15,
+    dt=SIM_DT,
+    dynamics=None,
+):
+    dynamics = DEFAULT_REFRIGERATION_DYNAMICS if dynamics is None else dynamics
+    initial_temp_k = float(initial_temp_k)
+    supply_steps = pipe_delay_steps(
+        dynamics.get("tau_pipe_supply_s", 0.0), dt
+    )
+    return_steps = pipe_delay_steps(
+        dynamics.get("tau_pipe_return_s", 0.0), dt
+    )
     N_fan_cmd = staged_fan_speed(N_comp_cmd)
     return {
         "N_comp_eff": float(N_comp_cmd),
@@ -84,8 +99,10 @@ def initialize_refrigeration_dynamic_state(N_comp_cmd, N_pump_cmd):
         "N_fan_eff": float(N_fan_cmd),
         "Q_evap_eff": 0.0,
         "Q_cond_eff": 0.0,
-        "T_pipe_supply_history_K": [],
-        "T_pipe_return_history_K": [],
+        "T_pipe_supply_K": initial_temp_k,
+        "T_pipe_return_K": initial_temp_k,
+        "T_pipe_supply_history_K": [initial_temp_k] * supply_steps,
+        "T_pipe_return_history_K": [initial_temp_k] * return_steps,
     }
 
 
@@ -396,7 +413,13 @@ def simulate_thermal_loop_step(
 
     dynamics = DEFAULT_REFRIGERATION_DYNAMICS if dynamics is None else dynamics
     if dynamic_state is None:
-        dynamic_state = initialize_refrigeration_dynamic_state(N_comp_cmd, N_pump_cmd)
+        dynamic_state = initialize_refrigeration_dynamic_state(
+            N_comp_cmd,
+            N_pump_cmd,
+            initial_temp_k=T_tank_K,
+            dt=dt,
+            dynamics=dynamics,
+        )
 
     N_fan_cmd = staged_fan_speed(N_comp_cmd)
     N_comp_eff = first_order_lag(

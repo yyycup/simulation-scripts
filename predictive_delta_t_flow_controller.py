@@ -20,10 +20,20 @@ class SinglePredictiveDeltaTMPC(BaseFlowMPCController):
         target_temp_c=TARGET_TEMP_C,
         case_name=None,
         mpc_params=None,
+        predictor="candidate_b",
+        predictor_artifact=None,
         threshold_c=MPC_PRED_DELTA_T_SWITCH_C,
         buffer_s=MPC_PRED_SWITCH_BUFFER_S,
     ):
-        super().__init__(current_profile, dt=dt, target_temp_c=target_temp_c, case_name=case_name, mpc_params=mpc_params)
+        super().__init__(
+            current_profile,
+            dt=dt,
+            target_temp_c=target_temp_c,
+            case_name=case_name,
+            mpc_params=mpc_params,
+            predictor=predictor,
+            predictor_artifact=predictor_artifact,
+        )
         self.threshold_c = float(threshold_c)
         self.buffer_s = float(buffer_s)
         self.min_hold_s = float(self.mpc_params.reverse_hold_s)

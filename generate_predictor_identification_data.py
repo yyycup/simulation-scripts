@@ -908,7 +908,10 @@ def run_dynamic_scenario(spec, split="train"):
     t_tank_k = float(spec.initial_coolant_c) + 273.15
     t_plate_k = np.full(pack.cols, float(spec.initial_plate_c) + 273.15)
     dynamic_state = initialize_refrigeration_dynamic_state(
-        float(compressor[0]), float(pump[0])
+        float(compressor[0]),
+        float(pump[0]),
+        initial_temp_k=t_tank_k,
+        dt=float(spec.dt_s),
     )
     rows = []
 

@@ -53,6 +53,7 @@ RESPONSE_FIELDS = (
 )
 
 Q_EVAP_ACTIVE_THRESHOLD_W = 500.0
+FORMAL_BATTERY_HEAT_REMOVAL_COLUMN = "Battery heat removal rate (kW)"
 
 
 def _selected_artifact(artifact: str | Path | Mapping) -> dict:
@@ -84,11 +85,30 @@ def _horizon_steps(dt_s: float, horizons_s: Sequence[float]) -> tuple[tuple[floa
     return tuple(sorted(result, key=lambda item: item[1]))
 
 
-def _numeric_frame(frame: pd.DataFrame) -> pd.DataFrame:
-    missing = [column for column in COLUMNS.values() if column not in frame.columns]
+def _numeric_frame(frame: pd.DataFrame, artifact: Mapping) -> pd.DataFrame:
+    working = frame.copy()
+    plate_column = COLUMNS["t_plate_c"]
+    if (
+        plate_column not in working.columns
+        and FORMAL_BATTERY_HEAT_REMOVAL_COLUMN in working.columns
+    ):
+        conductance = float(
+            artifact["thermal"]["battery_plate_conductance_w_k"]
+        )
+        working[plate_column] = (
+            pd.to_numeric(
+                working[COLUMNS["t_batt_c"]], errors="raise"
+            )
+            - 1000.0
+            * pd.to_numeric(
+                working[FORMAL_BATTERY_HEAT_REMOVAL_COLUMN], errors="raise"
+            )
+            / conductance
+        )
+    missing = [column for column in COLUMNS.values() if column not in working.columns]
     if missing:
         raise ValueError(f"input CSV is missing required columns: {missing}")
-    selected = frame.loc[:, list(COLUMNS.values())].copy()
+    selected = working.loc[:, list(COLUMNS.values())].copy()
     for column in selected.columns:
         selected[column] = pd.to_numeric(selected[column], errors="raise")
     if not np.isfinite(selected.to_numpy(dtype=float)).all():
@@ -154,10 +174,13 @@ def evaluate_actual_command_replay(
     dt_s: float,
     horizons_s: Sequence[float] = (50.0, 100.0, 300.0),
     t_ambient_c: float = AMBIENT_TEMP_C,
+    origin_stride: int = 1,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Return per-origin errors and aggregate metrics for actual-command replay."""
+    if isinstance(origin_stride, bool) or int(origin_stride) != origin_stride or origin_stride < 1:
+        raise ValueError("origin_stride must be a positive integer")
     selected_artifact = _selected_artifact(artifact)
-    selected = _numeric_frame(frame)
+    selected = _numeric_frame(frame, selected_artifact)
     horizons = _horizon_steps(dt_s, horizons_s)
     if max(steps for _horizon, steps in horizons) >= len(selected):
         raise ValueError("maximum horizon must be shorter than the available data")
@@ -165,7 +188,11 @@ def evaluate_actual_command_replay(
     rows: list[dict[str, object]] = []
     horizons_by_step = {steps: horizon for horizon, steps in horizons}
     max_steps = max(horizons_by_step)
-    for origin_index in range(len(selected) - min(steps for _horizon, steps in horizons)):
+    for origin_index in range(
+        0,
+        len(selected) - min(steps for _horizon, steps in horizons),
+        int(origin_stride),
+    ):
         state = _initial_state(selected.iloc[origin_index])
         remaining_steps = len(selected) - 1 - origin_index
         for offset in range(1, min(max_steps, remaining_steps) + 1):
