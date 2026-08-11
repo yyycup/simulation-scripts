@@ -18,6 +18,27 @@ conda activate btms
 - `thermal_loop.py`：冷却回路、延迟和动态。
 - `thermal_system.py`：泵、换热器和制冷循环。
 - `model_data/`：运行所需的小型模型标定数据。
+- `run_p_mpc_operational.py`：唯一正式 Physics-P 闭环入口。
+- `p_mpc_run_support.py`：P 运行器共享场景、路径和汇总支持。
+- `mpc_physics_predictor.py`、`mpc_physics_shadow.py`、`mpc_predictor_selection.py`：稳定 P 预测与选择契约。
+- `experiments/physics_p/`：P 辨识、校准、评估和调参。
+- `tests/physics_p/`：P 专属回归。
+
+## Physics-P 显式运行入口
+
+Candidate B 仍是仓库默认 MPC 预测器。Physics-P 只通过下面的唯一正式入口显式启用：
+
+```powershell
+python run_p_mpc_operational.py --help
+```
+
+正式参数资产位于 `model_data/physics_p_operational_v1.json`。辨识、校准、评估和调参脚本位于 `experiments/physics_p/`，必须从项目根目录用 `python -m ...` 调用；旧根目录脚本命令已退役。
+
+Physics-P 专属回归：
+
+```powershell
+python -m unittest discover -s tests/physics_p -t . -p "test_*.py"
+```
 
 ## 最终控制器比较
 

@@ -127,6 +127,27 @@ class PhysicsPLayoutContractTests(unittest.TestCase):
         ]
         self.assertEqual(misplaced, [])
 
+    def test_active_docs_route_to_supported_physics_p_commands(self):
+        root_readme = (support.PROJECT_ROOT / "README.md").read_text(
+            encoding="utf-8"
+        )
+        project_map = (support.PROJECT_ROOT / "PROJECT_MAP_MIN.md").read_text(
+            encoding="utf-8"
+        )
+        codex_map = (support.PROJECT_ROOT / "CODEX_README_MIN.md").read_text(
+            encoding="utf-8"
+        )
+        experiment_readme = (
+            support.PROJECT_ROOT / "experiments" / "physics_p" / "README.md"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("run_p_mpc_operational.py", root_readme)
+        self.assertIn("Candidate B", root_readme)
+        self.assertIn("model_data/physics_p_operational_v1.json", project_map)
+        self.assertIn("experiments/physics_p/", codex_map)
+        self.assertIn("python -m experiments.physics_p", experiment_readme)
+        self.assertIn("旧命令已退役，不提供根目录 wrapper", experiment_readme)
+
 
 if __name__ == "__main__":
     unittest.main()
