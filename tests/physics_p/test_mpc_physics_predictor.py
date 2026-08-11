@@ -9,7 +9,7 @@ from unittest.mock import patch
 import numpy as np
 import pandas as pd
 
-from fit_mpc_physics_predictor import (
+from experiments.physics_p.identification.fit_mpc_physics_predictor import (
     DYNAMIC_START,
     DYNAMIC_RESPONSE_FIELDS,
     PLATE_REFINEMENT_KEYS,
@@ -51,7 +51,10 @@ from mpc_physics_predictor import (
     smooth_gate,
     validate_physics_artifact,
 )
-from predictor_identification_data import REQUIRED_COLUMNS
+from p_mpc_run_support import PROJECT_ROOT
+from experiments.physics_p.identification.predictor_identification_data import (
+    REQUIRED_COLUMNS,
+)
 
 
 KNOWN_ARTIFACT = {
@@ -879,7 +882,7 @@ class PhysicsFitTests(unittest.TestCase):
     def test_short_response_refinement_selects_only_validation_improvement(self):
         base = self.short_response_base()
         with patch(
-            "fit_mpc_physics_predictor._dynamic_validation_metric",
+            "experiments.physics_p.identification.fit_mpc_physics_predictor._dynamic_validation_metric",
             side_effect=[1.0, 0.5],
         ):
             refined = refine_physics_short_response(
@@ -898,7 +901,7 @@ class PhysicsFitTests(unittest.TestCase):
     def test_short_response_refinement_retains_base_without_improvement(self):
         base = self.short_response_base()
         with patch(
-            "fit_mpc_physics_predictor._dynamic_validation_metric",
+            "experiments.physics_p.identification.fit_mpc_physics_predictor._dynamic_validation_metric",
             side_effect=[1.0, 1.2],
         ):
             refined = refine_physics_short_response(
@@ -927,7 +930,7 @@ class PhysicsFitTests(unittest.TestCase):
     def test_plate_structure_refinement_uses_validation_gate(self):
         base = self.short_response_base()
         with patch(
-            "fit_mpc_physics_predictor._dynamic_validation_metric",
+            "experiments.physics_p.identification.fit_mpc_physics_predictor._dynamic_validation_metric",
             side_effect=[1.0, 0.8],
         ):
             refined = refine_physics_plate_structure(
@@ -945,7 +948,7 @@ class PhysicsFitTests(unittest.TestCase):
     def test_plate_structure_refinement_retains_base_without_improvement(self):
         base = self.short_response_base()
         with patch(
-            "fit_mpc_physics_predictor._dynamic_validation_metric",
+            "experiments.physics_p.identification.fit_mpc_physics_predictor._dynamic_validation_metric",
             side_effect=[1.0, 1.0],
         ):
             refined = refine_physics_plate_structure(
@@ -1178,7 +1181,7 @@ class PhysicsFitTests(unittest.TestCase):
                 captured.append(residual)
                 return SimpleNamespace(success=True, x=x0, cost=float(residual @ residual))
 
-            with patch("fit_mpc_physics_predictor.least_squares", side_effect=fake_optimizer):
+            with patch("experiments.physics_p.identification.fit_mpc_physics_predictor.least_squares", side_effect=fake_optimizer):
                 fit_physics_artifact(frame)
             return captured
 
@@ -1244,7 +1247,7 @@ class PhysicsFitTests(unittest.TestCase):
         frame = synthetic_frame()
         train = frame[frame["split"] == "train"]
         validation = frame[frame["split"] == "validation"]
-        with patch("fit_mpc_physics_predictor.least_squares", return_value=Result()):
+        with patch("experiments.physics_p.identification.fit_mpc_physics_predictor.least_squares", return_value=Result()):
             with self.assertRaisesRegex(RuntimeError, "all candidates failed"):
                 fit_physics_predictor(train, validation)
 
@@ -1266,7 +1269,7 @@ class PhysicsFitTests(unittest.TestCase):
         ):
             with self.subTest(parameters=parameters):
                 with patch(
-                    "fit_mpc_physics_predictor.least_squares",
+                    "experiments.physics_p.identification.fit_mpc_physics_predictor.least_squares",
                     return_value=Result(parameters),
                 ):
                     with self.assertRaisesRegex(RuntimeError, "all candidates failed"):
@@ -1332,7 +1335,7 @@ class PhysicsFitTests(unittest.TestCase):
         constant["thermal"] = json.loads(json.dumps(DEFAULT_THERMAL_PARAMETERS))
         result = SimpleNamespace(success=True, cost=1.0)
         with patch(
-            "fit_mpc_physics_predictor._fit_dynamic_candidate",
+            "experiments.physics_p.identification.fit_mpc_physics_predictor._fit_dynamic_candidate",
             side_effect=[(constant, result), RuntimeError("forced scheduled failure")],
         ):
             artifact = fit_physics_dynamic(KNOWN_ARTIFACT, synthetic_dynamic_frame())
@@ -1349,7 +1352,7 @@ class PhysicsFitTests(unittest.TestCase):
         for error in (ValueError("invalid candidate"), FloatingPointError("non-finite")):
             with self.subTest(error=type(error).__name__):
                 with patch(
-                    "fit_mpc_physics_predictor._fit_dynamic_candidate",
+                    "experiments.physics_p.identification.fit_mpc_physics_predictor._fit_dynamic_candidate",
                     side_effect=[(constant, result), error],
                 ):
                     artifact = fit_physics_dynamic(
@@ -1371,10 +1374,10 @@ class PhysicsFitTests(unittest.TestCase):
         scheduled["dynamic"]["time_constant_model"] = "scheduled"
         optimizer = SimpleNamespace(success=True, cost=1.0)
         with patch(
-            "fit_mpc_physics_predictor._fit_dynamic_candidate",
+            "experiments.physics_p.identification.fit_mpc_physics_predictor._fit_dynamic_candidate",
             side_effect=[(constant, optimizer), (scheduled, optimizer)],
         ), patch(
-            "fit_mpc_physics_predictor._dynamic_validation_metric",
+            "experiments.physics_p.identification.fit_mpc_physics_predictor._dynamic_validation_metric",
             side_effect=[1.0, RuntimeError("non-finite validation metric")],
         ):
             artifact = fit_physics_dynamic(KNOWN_ARTIFACT, synthetic_dynamic_frame())
@@ -1391,10 +1394,10 @@ class PhysicsFitTests(unittest.TestCase):
         scheduled["dynamic"]["time_constant_model"] = "scheduled"
         optimizer = SimpleNamespace(success=True, cost=1.0)
         with patch(
-            "fit_mpc_physics_predictor._fit_dynamic_candidate",
+            "experiments.physics_p.identification.fit_mpc_physics_predictor._fit_dynamic_candidate",
             side_effect=[(constant, optimizer), (scheduled, optimizer)],
         ), patch(
-            "fit_mpc_physics_predictor._dynamic_validation_metric",
+            "experiments.physics_p.identification.fit_mpc_physics_predictor._dynamic_validation_metric",
             side_effect=[0.0, 0.0],
         ):
             artifact = fit_physics_dynamic(KNOWN_ARTIFACT, synthetic_dynamic_frame())
@@ -1420,10 +1423,10 @@ class PhysicsFitTests(unittest.TestCase):
         for scheduled_metric, expected in ((0.91, "constant"), (0.90, "scheduled")):
             with self.subTest(scheduled_metric=scheduled_metric):
                 with patch(
-                    "fit_mpc_physics_predictor._fit_dynamic_candidate",
+                    "experiments.physics_p.identification.fit_mpc_physics_predictor._fit_dynamic_candidate",
                     side_effect=[(constant, optimizer), (scheduled, optimizer)],
                 ), patch(
-                    "fit_mpc_physics_predictor._dynamic_validation_metric",
+                    "experiments.physics_p.identification.fit_mpc_physics_predictor._dynamic_validation_metric",
                     side_effect=[1.0, scheduled_metric],
                 ):
                     artifact = fit_physics_dynamic(
@@ -1436,7 +1439,7 @@ class PhysicsFitTests(unittest.TestCase):
 
 class PhysicsCliTests(unittest.TestCase):
     def test_cli_output_cannot_be_inside_project_model_data(self):
-        project = Path(__file__).resolve().parent
+        project = PROJECT_ROOT
         with self.assertRaisesRegex(ValueError, "model_data"):
             _validate_output_path(project / "model_data" / "physics.json")
         with tempfile.TemporaryDirectory() as temp_dir:

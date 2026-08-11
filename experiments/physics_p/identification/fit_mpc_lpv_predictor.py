@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from mpc_lpv_predictor import (
+from .mpc_lpv_predictor import (
     DISTURBANCE_NAMES,
     INPUT_NAMES,
     STATE_NAMES,
@@ -14,7 +14,7 @@ from mpc_lpv_predictor import (
     validate_lpv_artifact,
 )
 from mpc_predictor_selection import LPV_L
-from predictor_identification_data import validate_identification_frame
+from .predictor_identification_data import validate_identification_frame
 
 
 ORDERS = (1, 2, 3)
@@ -222,7 +222,7 @@ def _candidate_artifact(train, order, ridge, use_pump_schedule, dt_s):
 def _rollout_temperature_mae(artifact, validation):
     if validation.empty:
         return float("inf")
-    from mpc_lpv_predictor import scheduled_matrices
+    from .mpc_lpv_predictor import scheduled_matrices
 
     order = artifact["order"]
     errors = []

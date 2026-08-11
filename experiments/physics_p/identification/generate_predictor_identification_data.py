@@ -13,6 +13,8 @@ from btms_runtime import ensure_env_library_bin_on_path
 
 ensure_env_library_bin_on_path()
 
+from p_mpc_run_support import PROJECT_ROOT
+
 import numpy as np
 import pack as pack_module
 import pandas as pd
@@ -21,7 +23,7 @@ import thermal_loop as thermal_loop_module
 import thermal_system as thermal_system_module
 
 from pack import BatteryPack
-from predictor_identification_data import (
+from .predictor_identification_data import (
     REQUIRED_COLUMNS,
     VALID_SPLITS,
     assign_scenario_splits,
@@ -1188,7 +1190,7 @@ def _parse_args():
     parser.add_argument(
         "--output-root",
         type=Path,
-        default=Path("outputs/mpc_predictor_identification_v1"),
+        default=PROJECT_ROOT / "outputs" / "mpc_predictor_identification_v1",
     )
     return parser.parse_args()
 

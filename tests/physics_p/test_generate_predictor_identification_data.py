@@ -10,8 +10,12 @@ from unittest.mock import call, patch
 import numpy as np
 import pandas as pd
 
-from predictor_identification_data import REQUIRED_COLUMNS, assign_scenario_splits
-from generate_predictor_identification_data import (
+import experiments.physics_p.identification.generate_predictor_identification_data as generator_module
+from experiments.physics_p.identification.predictor_identification_data import (
+    REQUIRED_COLUMNS,
+    assign_scenario_splits,
+)
+from experiments.physics_p.identification.generate_predictor_identification_data import (
     DynamicScenarioSpec,
     _parse_args,
     assign_dynamic_scenario_splits,
@@ -120,7 +124,7 @@ class GeneratePredictorIdentificationDataTest(unittest.TestCase):
     def test_cli_accepts_all_dataset(self):
         with patch(
             "sys.argv",
-            ["generate_predictor_identification_data.py", "--dataset", "all"],
+            ["experiments.physics_p.identification.generate_predictor_identification_data", "--dataset", "all"],
         ), patch("sys.stderr", new_callable=StringIO):
             self.assertEqual(_parse_args().dataset, "all")
 
@@ -140,8 +144,8 @@ class GeneratePredictorIdentificationDataTest(unittest.TestCase):
             rows.append(row)
         return rows
 
-    @patch("generate_predictor_identification_data.generate_dynamic_rows")
-    @patch("generate_predictor_identification_data.build_dynamic_scenarios")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.generate_dynamic_rows")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.build_dynamic_scenarios")
     def test_cli_dynamic_writes_only_index_free_utf8_dynamic_csv(
         self, build_scenarios, generate_rows
     ):
@@ -150,7 +154,7 @@ class GeneratePredictorIdentificationDataTest(unittest.TestCase):
         with TemporaryDirectory() as tmp, patch(
             "sys.argv",
             [
-                "generate_predictor_identification_data.py",
+                "experiments.physics_p.identification.generate_predictor_identification_data",
                 "--dataset",
                 "dynamic",
                 "--mode",
@@ -159,7 +163,7 @@ class GeneratePredictorIdentificationDataTest(unittest.TestCase):
                 tmp,
             ],
         ):
-            from generate_predictor_identification_data import main
+            from experiments.physics_p.identification.generate_predictor_identification_data import main
 
             main()
             output_root = Path(tmp)
@@ -171,10 +175,10 @@ class GeneratePredictorIdentificationDataTest(unittest.TestCase):
         self.assertFalse(any(column.startswith("Unnamed") for column in frame))
         self.assertTrue(set(REQUIRED_COLUMNS).issubset(frame.columns))
 
-    @patch("generate_predictor_identification_data.generate_dynamic_rows")
-    @patch("generate_predictor_identification_data.build_dynamic_scenarios")
-    @patch("generate_predictor_identification_data.generate_steady_rows")
-    @patch("generate_predictor_identification_data.build_steady_grid")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.generate_dynamic_rows")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.build_dynamic_scenarios")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.generate_steady_rows")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.build_steady_grid")
     def test_cli_all_writes_index_free_utf8_steady_and_dynamic_csvs(
         self,
         build_grid,
@@ -189,7 +193,7 @@ class GeneratePredictorIdentificationDataTest(unittest.TestCase):
         with TemporaryDirectory() as tmp, patch(
             "sys.argv",
             [
-                "generate_predictor_identification_data.py",
+                "experiments.physics_p.identification.generate_predictor_identification_data",
                 "--dataset",
                 "all",
                 "--mode",
@@ -198,7 +202,7 @@ class GeneratePredictorIdentificationDataTest(unittest.TestCase):
                 tmp,
             ],
         ):
-            from generate_predictor_identification_data import main
+            from experiments.physics_p.identification.generate_predictor_identification_data import main
 
             main()
             output_root = Path(tmp)
@@ -212,8 +216,8 @@ class GeneratePredictorIdentificationDataTest(unittest.TestCase):
             self.assertFalse(any(column.startswith("Unnamed") for column in frame))
             self.assertTrue(set(REQUIRED_COLUMNS).issubset(frame.columns))
 
-    @patch("generate_predictor_identification_data.generate_dynamic_rows")
-    @patch("generate_predictor_identification_data.build_dynamic_scenarios")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.generate_dynamic_rows")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.build_dynamic_scenarios")
     def test_cli_refuses_existing_target_before_generation_without_overwrite(
         self, build_scenarios, generate_rows
     ):
@@ -224,7 +228,7 @@ class GeneratePredictorIdentificationDataTest(unittest.TestCase):
             with patch(
                 "sys.argv",
                 [
-                    "generate_predictor_identification_data.py",
+                    "experiments.physics_p.identification.generate_predictor_identification_data",
                     "--dataset",
                     "dynamic",
                     "--mode",
@@ -233,7 +237,7 @@ class GeneratePredictorIdentificationDataTest(unittest.TestCase):
                     tmp,
                 ],
             ):
-                from generate_predictor_identification_data import main
+                from experiments.physics_p.identification.generate_predictor_identification_data import main
 
                 with self.assertRaisesRegex(FileExistsError, "--overwrite"):
                     main()
@@ -242,10 +246,10 @@ class GeneratePredictorIdentificationDataTest(unittest.TestCase):
             build_scenarios.assert_not_called()
             generate_rows.assert_not_called()
 
-    @patch("generate_predictor_identification_data.generate_dynamic_rows")
-    @patch("generate_predictor_identification_data.build_dynamic_scenarios")
-    @patch("generate_predictor_identification_data.generate_steady_rows")
-    @patch("generate_predictor_identification_data.build_steady_grid")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.generate_dynamic_rows")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.build_dynamic_scenarios")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.generate_steady_rows")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.build_steady_grid")
     def test_cli_all_generation_failure_keeps_both_existing_targets_unchanged(
         self,
         build_grid,
@@ -266,7 +270,7 @@ class GeneratePredictorIdentificationDataTest(unittest.TestCase):
             with patch(
                 "sys.argv",
                 [
-                    "generate_predictor_identification_data.py",
+                    "experiments.physics_p.identification.generate_predictor_identification_data",
                     "--dataset",
                     "all",
                     "--mode",
@@ -276,7 +280,7 @@ class GeneratePredictorIdentificationDataTest(unittest.TestCase):
                     "--overwrite",
                 ],
             ):
-                from generate_predictor_identification_data import main
+                from experiments.physics_p.identification.generate_predictor_identification_data import main
 
                 with self.assertRaisesRegex(RuntimeError, "dynamic failed"):
                     main()
@@ -288,10 +292,10 @@ class GeneratePredictorIdentificationDataTest(unittest.TestCase):
                 ["dynamic_smoke.csv", "steady_smoke.csv"],
             )
 
-    @patch("generate_predictor_identification_data.generate_dynamic_rows")
-    @patch("generate_predictor_identification_data.build_dynamic_scenarios")
-    @patch("generate_predictor_identification_data.generate_steady_rows")
-    @patch("generate_predictor_identification_data.build_steady_grid")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.generate_dynamic_rows")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.build_dynamic_scenarios")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.generate_steady_rows")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.build_steady_grid")
     def test_cli_overwrite_atomically_updates_both_datasets_with_seed(
         self,
         build_grid,
@@ -310,7 +314,7 @@ class GeneratePredictorIdentificationDataTest(unittest.TestCase):
             with patch(
                 "sys.argv",
                 [
-                    "generate_predictor_identification_data.py",
+                    "experiments.physics_p.identification.generate_predictor_identification_data",
                     "--dataset",
                     "all",
                     "--mode",
@@ -322,7 +326,7 @@ class GeneratePredictorIdentificationDataTest(unittest.TestCase):
                     "--overwrite",
                 ],
             ):
-                from generate_predictor_identification_data import main
+                from experiments.physics_p.identification.generate_predictor_identification_data import main
 
                 main()
             steady = pd.read_csv(output_root / "steady_smoke.csv", encoding="utf-8")
@@ -334,10 +338,10 @@ class GeneratePredictorIdentificationDataTest(unittest.TestCase):
         self.assertEqual(set(dynamic["dataset_seed"]), {123})
         self.assertEqual(names, ["dynamic_smoke.csv", "steady_smoke.csv"])
 
-    @patch("generate_predictor_identification_data.generate_dynamic_rows")
-    @patch("generate_predictor_identification_data.build_dynamic_scenarios")
-    @patch("generate_predictor_identification_data.generate_steady_rows")
-    @patch("generate_predictor_identification_data.build_steady_grid")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.generate_dynamic_rows")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.build_dynamic_scenarios")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.generate_steady_rows")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.build_steady_grid")
     def test_cli_publish_failure_restores_both_backups_without_temp_files(
         self,
         build_grid,
@@ -367,7 +371,7 @@ class GeneratePredictorIdentificationDataTest(unittest.TestCase):
             with patch(
                 "sys.argv",
                 [
-                    "generate_predictor_identification_data.py",
+                    "experiments.physics_p.identification.generate_predictor_identification_data",
                     "--dataset",
                     "all",
                     "--mode",
@@ -377,10 +381,10 @@ class GeneratePredictorIdentificationDataTest(unittest.TestCase):
                     "--overwrite",
                 ],
             ), patch(
-                "generate_predictor_identification_data.os.replace",
+                "experiments.physics_p.identification.generate_predictor_identification_data.os.replace",
                 side_effect=fail_second_publish,
             ):
-                from generate_predictor_identification_data import main
+                from experiments.physics_p.identification.generate_predictor_identification_data import main
 
                 with self.assertRaisesRegex(OSError, "second publish failed"):
                     main()
@@ -393,7 +397,7 @@ class GeneratePredictorIdentificationDataTest(unittest.TestCase):
             )
 
     def test_no_overwrite_publish_preserves_concurrent_target_and_rolls_back_group(self):
-        from generate_predictor_identification_data import _atomic_publish_frames
+        from experiments.physics_p.identification.generate_predictor_identification_data import _atomic_publish_frames
 
         frames = {
             "steady": pd.DataFrame({"value": [1]}),
@@ -414,7 +418,7 @@ class GeneratePredictorIdentificationDataTest(unittest.TestCase):
                 return real_link(source, target)
 
             with patch(
-                "generate_predictor_identification_data.os.link",
+                "experiments.physics_p.identification.generate_predictor_identification_data.os.link",
                 side_effect=create_concurrent_dynamic_before_link,
             ):
                 with self.assertRaisesRegex(FileExistsError, "dynamic_smoke.csv"):
@@ -431,7 +435,7 @@ class GeneratePredictorIdentificationDataTest(unittest.TestCase):
             )
 
     def test_rollback_keeps_failed_backup_and_restores_other_targets(self):
-        from generate_predictor_identification_data import _atomic_publish_frames
+        from experiments.physics_p.identification.generate_predictor_identification_data import _atomic_publish_frames
 
         frames = {
             "steady": pd.DataFrame({"value": [1]}),
@@ -457,7 +461,7 @@ class GeneratePredictorIdentificationDataTest(unittest.TestCase):
                 return real_replace(source, target)
 
             with patch(
-                "generate_predictor_identification_data.os.replace",
+                "experiments.physics_p.identification.generate_predictor_identification_data.os.replace",
                 side_effect=fail_publish_and_one_restore,
             ):
                 with self.assertRaisesRegex(
@@ -481,7 +485,7 @@ class GeneratePredictorIdentificationDataTest(unittest.TestCase):
             self.assertFalse(any(root.glob(".dynamic_smoke.csv.*.bak")))
 
     def test_rollback_continues_after_published_target_unlink_failure(self):
-        from generate_predictor_identification_data import _atomic_publish_frames
+        from experiments.physics_p.identification.generate_predictor_identification_data import _atomic_publish_frames
 
         frames = {
             "steady": pd.DataFrame({"value": [1]}),
@@ -515,7 +519,7 @@ class GeneratePredictorIdentificationDataTest(unittest.TestCase):
                 return real_unlink(path, *args, **kwargs)
 
             with patch(
-                "generate_predictor_identification_data.os.replace",
+                "experiments.physics_p.identification.generate_predictor_identification_data.os.replace",
                 side_effect=fail_second_publish,
             ), patch.object(
                 Path,
@@ -540,9 +544,7 @@ class GeneratePredictorIdentificationDataTest(unittest.TestCase):
             self.assertFalse(any(root.glob("*.bak")))
 
     def test_windows_runtime_path_is_prepared_before_pack_import(self):
-        source = Path("generate_predictor_identification_data.py").read_text(
-            encoding="utf-8"
-        )
+        source = Path(generator_module.__file__).read_text(encoding="utf-8")
 
         self.assertLess(
             source.index("ensure_env_library_bin_on_path()"),
@@ -550,7 +552,7 @@ class GeneratePredictorIdentificationDataTest(unittest.TestCase):
         )
 
     def test_configuration_hash_tracks_configuration_and_plant_source(self):
-        from generate_predictor_identification_data import build_configuration_hash
+        from experiments.physics_p.identification.generate_predictor_identification_data import build_configuration_hash
 
         configuration = {"evap_ua_factor": 2.0, "n_comp_min_rpm": 2000.0}
         first = build_configuration_hash(configuration, "source-a")
@@ -611,7 +613,7 @@ class GeneratePredictorIdentificationDataTest(unittest.TestCase):
                 hash_file_content(missing, "HPPC parameters")
 
     def test_hppc_parameter_file_accepts_valid_minimal_fixture(self):
-        from generate_predictor_identification_data import (
+        from experiments.physics_p.identification.generate_predictor_identification_data import (
             validate_hppc_parameter_file,
         )
 
@@ -623,7 +625,7 @@ class GeneratePredictorIdentificationDataTest(unittest.TestCase):
 
             validate_hppc_parameter_file(path)
 
-    @patch("generate_predictor_identification_data.BatteryPack")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.BatteryPack")
     def test_invalid_hppc_files_fail_before_battery_pack_construction(self, battery_pack):
         invalid_cases = []
         missing = self._valid_hppc_fixture()
@@ -643,7 +645,7 @@ class GeneratePredictorIdentificationDataTest(unittest.TestCase):
                     path = Path(tmp) / f"{name}.json"
                     path.write_text(content, encoding="utf-8")
                     with patch(
-                        "generate_predictor_identification_data.pack_module.HPPC_PARAMS_PATH",
+                        "experiments.physics_p.identification.generate_predictor_identification_data.pack_module.HPPC_PARAMS_PATH",
                         path,
                     ):
                         with self.assertRaisesRegex(ValueError, message) as caught:
@@ -653,12 +655,12 @@ class GeneratePredictorIdentificationDataTest(unittest.TestCase):
                     self.assertIn(str(path), str(caught.exception))
                     battery_pack.assert_not_called()
 
-    @patch("generate_predictor_identification_data.run_refrigeration_cycle")
-    @patch("generate_predictor_identification_data.pump_model", return_value=(0.23, 23.0))
-    @patch("generate_predictor_identification_data.staged_fan_speed", return_value=777.0)
-    @patch("generate_predictor_identification_data.simulate_thermal_loop_step")
-    @patch("generate_predictor_identification_data.initialize_refrigeration_dynamic_state")
-    @patch("generate_predictor_identification_data.BatteryPack")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.run_refrigeration_cycle")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.pump_model", return_value=(0.23, 23.0))
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.staged_fan_speed", return_value=777.0)
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.simulate_thermal_loop_step")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.initialize_refrigeration_dynamic_state")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.BatteryPack")
     def test_hppc_numeric_strings_and_booleans_fail_before_battery_pack(
         self,
         battery_pack,
@@ -694,7 +696,7 @@ class GeneratePredictorIdentificationDataTest(unittest.TestCase):
                     path = Path(tmp) / f"invalid_numeric_{index}.json"
                     path.write_text(json.dumps(data), encoding="utf-8")
                     with patch(
-                        "generate_predictor_identification_data.pack_module.HPPC_PARAMS_PATH",
+                        "experiments.physics_p.identification.generate_predictor_identification_data.pack_module.HPPC_PARAMS_PATH",
                         path,
                     ):
                         with self.assertRaisesRegex(
@@ -708,9 +710,9 @@ class GeneratePredictorIdentificationDataTest(unittest.TestCase):
 
         battery_pack.assert_not_called()
 
-    @patch("generate_predictor_identification_data.run_refrigeration_cycle")
-    @patch("generate_predictor_identification_data.staged_fan_speed")
-    @patch("generate_predictor_identification_data.pump_model")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.run_refrigeration_cycle")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.staged_fan_speed")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.pump_model")
     def test_active_point_rejects_missing_or_nonfinite_critical_cycle_outputs(
         self, pump_model, staged_fan_speed, run_cycle
     ):
@@ -749,9 +751,9 @@ class GeneratePredictorIdentificationDataTest(unittest.TestCase):
                     self.assertIn(key, message)
                     self.assertIn(expected_value, message)
 
-    @patch("generate_predictor_identification_data.run_refrigeration_cycle")
-    @patch("generate_predictor_identification_data.staged_fan_speed")
-    @patch("generate_predictor_identification_data.pump_model")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.run_refrigeration_cycle")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.staged_fan_speed")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.pump_model")
     def test_off_point_allows_missing_capacity_limits_only(
         self, pump_model, staged_fan_speed, run_cycle
     ):
@@ -770,9 +772,9 @@ class GeneratePredictorIdentificationDataTest(unittest.TestCase):
         self.assertEqual(row["q_hx_potential_w"], 0.0)
         self.assertEqual(row["q_ref_max_w"], 0.0)
 
-    @patch("generate_predictor_identification_data.run_refrigeration_cycle")
-    @patch("generate_predictor_identification_data.staged_fan_speed")
-    @patch("generate_predictor_identification_data.pump_model")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.run_refrigeration_cycle")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.staged_fan_speed")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.pump_model")
     def test_steady_row_preserves_the_off_1000_boundary(
         self, pump_model, staged_fan_speed, run_cycle
     ):
@@ -1053,12 +1055,12 @@ class DynamicRolloutTest(unittest.TestCase):
                         replace(self._spec(), **{field: value}), split="train"
                     )
 
-    @patch("generate_predictor_identification_data.run_refrigeration_cycle")
-    @patch("generate_predictor_identification_data.pump_model")
-    @patch("generate_predictor_identification_data.staged_fan_speed")
-    @patch("generate_predictor_identification_data.simulate_thermal_loop_step")
-    @patch("generate_predictor_identification_data.initialize_refrigeration_dynamic_state")
-    @patch("generate_predictor_identification_data.BatteryPack")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.run_refrigeration_cycle")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.pump_model")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.staged_fan_speed")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.simulate_thermal_loop_step")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.initialize_refrigeration_dynamic_state")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.BatteryPack")
     def test_one_step_uses_dynamic_plant_and_separate_steady_diagnostic(
         self,
         battery_pack,
@@ -1126,12 +1128,12 @@ class DynamicRolloutTest(unittest.TestCase):
         self.assertEqual(fake_pack.step_calls[0][2], 308.15)
         self.assertTrue(all(not history for history in fake_pack.history))
 
-    @patch("generate_predictor_identification_data.run_refrigeration_cycle")
-    @patch("generate_predictor_identification_data.pump_model", return_value=(0.23, 23.0))
-    @patch("generate_predictor_identification_data.staged_fan_speed", return_value=777.0)
-    @patch("generate_predictor_identification_data.simulate_thermal_loop_step")
-    @patch("generate_predictor_identification_data.initialize_refrigeration_dynamic_state")
-    @patch("generate_predictor_identification_data.BatteryPack")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.run_refrigeration_cycle")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.pump_model", return_value=(0.23, 23.0))
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.staged_fan_speed", return_value=777.0)
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.simulate_thermal_loop_step")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.initialize_refrigeration_dynamic_state")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.BatteryPack")
     def test_two_step_rollout_chains_dynamic_state_and_increments_time(
         self,
         battery_pack,
@@ -1184,12 +1186,12 @@ class DynamicRolloutTest(unittest.TestCase):
         )
         self.assertEqual([row["t_cool_c"] for row in rows], [27.0, 29.0])
 
-    @patch("generate_predictor_identification_data.run_refrigeration_cycle")
-    @patch("generate_predictor_identification_data.pump_model", return_value=(0.23, 23.0))
-    @patch("generate_predictor_identification_data.staged_fan_speed", return_value=777.0)
-    @patch("generate_predictor_identification_data.simulate_thermal_loop_step")
-    @patch("generate_predictor_identification_data.initialize_refrigeration_dynamic_state")
-    @patch("generate_predictor_identification_data.BatteryPack")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.run_refrigeration_cycle")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.pump_model", return_value=(0.23, 23.0))
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.staged_fan_speed", return_value=777.0)
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.simulate_thermal_loop_step")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.initialize_refrigeration_dynamic_state")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.BatteryPack")
     def test_two_scenarios_create_fresh_pack_and_dynamic_state(
         self,
         battery_pack,
@@ -1239,12 +1241,12 @@ class DynamicRolloutTest(unittest.TestCase):
             {"scenario": "second"},
         )
 
-    @patch("generate_predictor_identification_data.run_refrigeration_cycle")
-    @patch("generate_predictor_identification_data.pump_model")
-    @patch("generate_predictor_identification_data.staged_fan_speed")
-    @patch("generate_predictor_identification_data.simulate_thermal_loop_step")
-    @patch("generate_predictor_identification_data.initialize_refrigeration_dynamic_state")
-    @patch("generate_predictor_identification_data.BatteryPack")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.run_refrigeration_cycle")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.pump_model")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.staged_fan_speed")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.simulate_thermal_loop_step")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.initialize_refrigeration_dynamic_state")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.BatteryPack")
     def test_dynamic_thermal_step_rejects_each_missing_or_invalid_required_output(
         self,
         battery_pack,
@@ -1294,12 +1296,12 @@ class DynamicRolloutTest(unittest.TestCase):
                     self.assertIn("step 0", message)
                     self.assertIn(key, message)
 
-    @patch("generate_predictor_identification_data.run_refrigeration_cycle")
-    @patch("generate_predictor_identification_data.pump_model")
-    @patch("generate_predictor_identification_data.staged_fan_speed")
-    @patch("generate_predictor_identification_data.simulate_thermal_loop_step")
-    @patch("generate_predictor_identification_data.initialize_refrigeration_dynamic_state")
-    @patch("generate_predictor_identification_data.BatteryPack")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.run_refrigeration_cycle")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.pump_model")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.staged_fan_speed")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.simulate_thermal_loop_step")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.initialize_refrigeration_dynamic_state")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.BatteryPack")
     def test_dynamic_diagnostics_reject_nonfinite_pump_outputs_and_fan_speed(
         self,
         battery_pack,
@@ -1332,12 +1334,12 @@ class DynamicRolloutTest(unittest.TestCase):
                 self.assertIn("step 0", message)
                 self.assertIn(key, message)
 
-    @patch("generate_predictor_identification_data.run_refrigeration_cycle")
-    @patch("generate_predictor_identification_data.pump_model", return_value=(0.23, 23.0))
-    @patch("generate_predictor_identification_data.staged_fan_speed", return_value=777.0)
-    @patch("generate_predictor_identification_data.simulate_thermal_loop_step")
-    @patch("generate_predictor_identification_data.initialize_refrigeration_dynamic_state", return_value={})
-    @patch("generate_predictor_identification_data.BatteryPack")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.run_refrigeration_cycle")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.pump_model", return_value=(0.23, 23.0))
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.staged_fan_speed", return_value=777.0)
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.simulate_thermal_loop_step")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.initialize_refrigeration_dynamic_state", return_value={})
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.BatteryPack")
     def test_dynamic_active_cycle_rejects_each_missing_or_nonfinite_required_value(
         self,
         battery_pack,
@@ -1376,12 +1378,12 @@ class DynamicRolloutTest(unittest.TestCase):
                     self.assertIn("step 0", message)
                     self.assertIn(key, message)
 
-    @patch("generate_predictor_identification_data.run_refrigeration_cycle")
-    @patch("generate_predictor_identification_data.pump_model", return_value=(0.23, 23.0))
-    @patch("generate_predictor_identification_data.staged_fan_speed", return_value=0.0)
-    @patch("generate_predictor_identification_data.simulate_thermal_loop_step")
-    @patch("generate_predictor_identification_data.initialize_refrigeration_dynamic_state", return_value={})
-    @patch("generate_predictor_identification_data.BatteryPack")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.run_refrigeration_cycle")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.pump_model", return_value=(0.23, 23.0))
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.staged_fan_speed", return_value=0.0)
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.simulate_thermal_loop_step")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.initialize_refrigeration_dynamic_state", return_value={})
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.BatteryPack")
     def test_dynamic_off_cycle_allows_only_missing_capacity_limits(
         self,
         battery_pack,
@@ -1410,8 +1412,8 @@ class DynamicRolloutTest(unittest.TestCase):
         self.assertEqual(row["q_hx_potential_w"], 0.0)
         self.assertEqual(row["q_ref_max_w"], 0.0)
 
-    @patch("generate_predictor_identification_data.run_dynamic_scenario")
-    @patch("generate_predictor_identification_data.assign_dynamic_scenario_splits")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.run_dynamic_scenario")
+    @patch("experiments.physics_p.identification.generate_predictor_identification_data.assign_dynamic_scenario_splits")
     def test_generate_dynamic_rows_assigns_splits_once_before_rollout(
         self, assign_splits, run_scenario
     ):

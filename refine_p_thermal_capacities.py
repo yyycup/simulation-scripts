@@ -21,7 +21,9 @@ import numpy as np
 import pandas as pd
 
 from evaluate_p_shadow_actual_replay import evaluate_actual_command_replay
-from fit_mpc_physics_predictor import _dynamic_validation_metric
+from experiments.physics_p.identification.fit_mpc_physics_predictor import (
+    _dynamic_validation_metric,
+)
 from mpc_physics_predictor import (
     DEFAULT_THERMAL_PARAMETERS,
     initialize_physics_state,

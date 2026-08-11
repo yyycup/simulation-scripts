@@ -16,7 +16,7 @@ from mpc_physics_predictor import (
     load_physics_artifact,
     step_physics_predictor,
 )
-from predictor_identification_data import validate_identification_frame
+from .predictor_identification_data import validate_identification_frame
 
 
 DEFAULT_HORIZONS_S = (5.0, 50.0, 100.0, 300.0)

@@ -4,7 +4,10 @@ import unittest
 import numpy as np
 import pandas as pd
 
-from evaluate_mpc_predictors import capacity_metrics, error_metrics
+from experiments.physics_p.identification.evaluate_mpc_predictors import (
+    capacity_metrics,
+    error_metrics,
+)
 
 
 class ErrorMetricsTest(unittest.TestCase):

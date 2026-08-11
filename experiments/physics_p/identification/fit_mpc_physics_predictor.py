@@ -10,6 +10,8 @@ from btms_runtime import ensure_env_library_bin_on_path
 
 ensure_env_library_bin_on_path()
 
+from p_mpc_run_support import PROJECT_ROOT
+
 from scipy.optimize import least_squares
 
 from mpc_physics_predictor import (
@@ -29,7 +31,7 @@ from mpc_physics_predictor import (
     validate_physics_artifact,
 )
 from mpc_predictor_selection import PHYSICS_P
-from predictor_identification_data import validate_identification_frame
+from .predictor_identification_data import validate_identification_frame
 
 
 STARTS = (
@@ -1053,7 +1055,7 @@ def fit_physics_artifact(frame: pd.DataFrame, dynamic_frame: pd.DataFrame | None
 
 def _validate_output_path(path: str | Path) -> Path:
     resolved = Path(path).resolve()
-    model_data = (Path(__file__).resolve().parent / "model_data").resolve()
+    model_data = (PROJECT_ROOT / "model_data").resolve()
     if resolved == model_data or model_data in resolved.parents:
         raise ValueError("Fitted artifacts must not be written directly into model_data")
     return resolved

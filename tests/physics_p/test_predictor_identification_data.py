@@ -1,6 +1,6 @@
 import unittest
 import pandas as pd
-from predictor_identification_data import (
+from experiments.physics_p.identification.predictor_identification_data import (
     REQUIRED_COLUMNS,
     assign_scenario_splits,
     validate_identification_frame,

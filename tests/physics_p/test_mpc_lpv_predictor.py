@@ -5,14 +5,14 @@ import unittest
 import numpy as np
 import pandas as pd
 
-from fit_mpc_lpv_predictor import (
+from experiments.physics_p.identification.fit_mpc_lpv_predictor import (
     _rate_matrices,
     _stable,
     build_grouped_lagged_samples,
     fit_lpv_artifact,
     pump_schedule_improves,
 )
-from mpc_lpv_predictor import (
+from experiments.physics_p.identification.mpc_lpv_predictor import (
     DISTURBANCE_NAMES,
     INPUT_NAMES,
     STATE_NAMES,
