@@ -1333,6 +1333,22 @@ subminimum low-speed constraint at `999 rpm`, not at the active boundary
 pass before continuing. Do not change capacity formulas, fit thresholds, the
 operational asset, or runtime predictor behavior.
 
+After the dimensional fix, keep the existing `max_nfev=80` and the requirement
+that SciPy returns `success=True`, but pass these explicit tolerances only to the
+dynamic candidate fit:
+
+```python
+ftol=1e-5,
+xtol=1e-5,
+gtol=1e-5,
+```
+
+Add one focused `PhysicsFitTests` method that patches the dynamic fitter's
+`least_squares`, calls `_fit_dynamic_candidate(...)`, and asserts the three
+tolerance keyword arguments are exactly `1e-5`. Verify the test fails because
+the keywords are absent before updating production code. Do not accept
+`status=0`, change the bounds, or increase `max_nfev`.
+
 Commit this focused pre-existing bug fix before the file-layout changes:
 
 ```powershell
@@ -1491,7 +1507,9 @@ self.assertEqual(
   test_thermal_initial_state
 ```
 
-Expected: P discovery runs 255 preserved tests plus 5 layout-contract tests, so `Ran 260 tests`; boundary command remains `Ran 74 tests`; both end with `OK`.
+Expected: P discovery runs 256 preserved tests (including the new dynamic-fit
+tolerance contract) plus 5 layout-contract tests, so `Ran 261 tests`; boundary
+command remains `Ran 74 tests`; both end with `OK`.
 
 - [ ] **Step 6: Commit the test layout**
 
@@ -1778,7 +1796,7 @@ Expected: `CLI_OK 18`.
   test_thermal_initial_state
 ```
 
-Expected: `Ran 261 tests` then `Ran 74 tests`; both `OK`.
+Expected: `Ran 262 tests` then `Ran 74 tests`; both `OK`.
 
 - [ ] **Step 4: Run the exact historical 277-test adjacent regression set**
 

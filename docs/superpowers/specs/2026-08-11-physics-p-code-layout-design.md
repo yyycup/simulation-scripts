@@ -175,6 +175,11 @@ ignored `outputs/` 文件。
 `MINIMUM_ACTIVE_RPM=1000` 的点；机械 smoke 测试应在 `999 rpm` 验证该约束，
 不得把 `1000 rpm` 活跃边界错误要求为小于 `25 W`。修复仅限 identification
 工具和对应测试，不修改正式 operational asset、运行时 predictor 或控制逻辑。
+在维度修复后，SciPy 默认 `1e-8` 收敛容差会使同一有限、在 bounds 内的候选
+耗尽 `max_nfev=80` 并返回 `status=0`。dynamic fitter 必须保留 80 次预算和
+`success=True` 契约，不接受 `status=0`；仅为该离线拟合显式设置
+`ftol=xtol=gtol=1e-5`。该容差已在相同输入上以 `status=2` 收敛并通过 artifact
+及 validation 检查，且不得传播到运行时模型或其他拟合器。
 
 ## 8. 导入与路径规则
 
