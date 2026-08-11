@@ -68,7 +68,9 @@ DYNAMIC_NUMERIC_KEYS = tuple(
     name for name in DEFAULT_DYNAMIC_PARAMETERS if name != "time_constant_model"
 )
 THERMAL_KEYS = tuple(
-    name for name in DEFAULT_THERMAL_PARAMETERS if name != "coolant_cp_j_kg_k"
+    name
+    for name in DEFAULT_THERMAL_PARAMETERS
+    if name not in {"coolant_cp_j_kg_k", "battery_heat_generation_scale"}
 )
 SCHEDULE_KEYS = tuple(sorted(SCHEDULE_PARAMETER_NAMES))
 DYNAMIC_LOWER = np.array(
@@ -578,6 +580,12 @@ def _dynamic_artifact(
     offset = len(DYNAMIC_NUMERIC_KEYS)
     artifact["thermal"] = {
         "coolant_cp_j_kg_k": PHYSICAL_COOLANT_CP_J_KG_K,
+        "battery_heat_generation_scale": float(
+            base_artifact.get("thermal", {}).get(
+                "battery_heat_generation_scale",
+                DEFAULT_THERMAL_PARAMETERS["battery_heat_generation_scale"],
+            )
+        ),
         **{
             name: float(parameters[offset + index])
             for index, name in enumerate(THERMAL_KEYS)
@@ -702,6 +710,9 @@ def _fit_dynamic_candidate(
         bounds=(lower, upper),
         max_nfev=80,
         tr_solver="lsmr",
+        ftol=1e-5,
+        xtol=1e-5,
+        gtol=1e-5,
     )
     parameters = np.asarray(result.x, dtype=float)
     parameters[delay_index] = 0.0

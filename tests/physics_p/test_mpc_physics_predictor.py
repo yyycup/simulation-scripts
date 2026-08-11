@@ -16,6 +16,7 @@ from experiments.physics_p.identification.fit_mpc_physics_predictor import (
     THERMAL_KEYS,
     _artifact_from_parameters,
     _dynamic_artifact,
+    _fit_dynamic_candidate,
     _plate_refinement_artifact,
     _plate_structure_artifact,
     _short_response_artifact,
@@ -846,9 +847,31 @@ class PhysicsArtifactTests(unittest.TestCase):
 
 
 class PhysicsFitTests(unittest.TestCase):
+    def test_dynamic_fit_uses_stable_explicit_solver_tolerances(self):
+        observed_kwargs = {}
+
+        def fake_least_squares(residual, start, **kwargs):
+            residual(np.asarray(start, dtype=float))
+            observed_kwargs.update(kwargs)
+            return SimpleNamespace(success=True, x=np.asarray(start, dtype=float))
+
+        train = synthetic_dynamic_frame().loc[lambda frame: frame["split"] == "train"]
+        with patch(
+            "experiments.physics_p.identification.fit_mpc_physics_predictor.least_squares",
+            side_effect=fake_least_squares,
+        ):
+            _fit_dynamic_candidate(KNOWN_ARTIFACT, train, "constant")
+
+        self.assertEqual(observed_kwargs.get("ftol"), 1e-5)
+        self.assertEqual(observed_kwargs.get("xtol"), 1e-5)
+        self.assertEqual(observed_kwargs.get("gtol"), 1e-5)
+
     def test_dynamic_artifact_can_select_physical_battery_plate_structure(self):
+        base = json.loads(json.dumps(KNOWN_ARTIFACT))
+        base["thermal"] = json.loads(json.dumps(DEFAULT_THERMAL_PARAMETERS))
+        base["thermal"]["battery_heat_generation_scale"] = 0.74
         artifact = _dynamic_artifact(
-            KNOWN_ARTIFACT,
+            base,
             DYNAMIC_START,
             "constant",
             battery_plate_conductance_model="constant_physical",
@@ -858,6 +881,7 @@ class PhysicsFitTests(unittest.TestCase):
             artifact["thermal"]["battery_plate_conductance_model"],
             "constant_physical",
         )
+        self.assertEqual(artifact["thermal"]["battery_heat_generation_scale"], 0.74)
 
     def short_response_base(self):
         base = json.loads(json.dumps(KNOWN_ARTIFACT))
@@ -1208,9 +1232,11 @@ class PhysicsFitTests(unittest.TestCase):
             "fixed_mechanical_no_validation",
         )
         self.assertEqual(artifact["fit"]["candidate_count"], 1)
-        value = evaluate_physics_capacity(1000, 1600, 25, 35, artifact=artifact)
-        self.assertTrue(math.isfinite(value))
-        self.assertLess(value, 25.0)
+        subminimum_value = evaluate_physics_capacity(
+            999, 1600, 25, 35, artifact=artifact
+        )
+        self.assertTrue(math.isfinite(subminimum_value))
+        self.assertLess(subminimum_value, 25.0)
 
     def test_core_fit_requires_explicit_train_and_validation_splits(self):
         frame = synthetic_frame()
