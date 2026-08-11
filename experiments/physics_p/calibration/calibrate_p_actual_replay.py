@@ -16,7 +16,7 @@ ensure_env_library_bin_on_path()
 
 from scipy.optimize import least_squares
 
-from experiments.physics_p.evaluation.evaluate_p_shadow_actual_replay import (
+from ..evaluation.evaluate_p_shadow_actual_replay import (
     evaluate_actual_command_replay,
 )
 from mpc_physics_predictor import (
@@ -24,6 +24,7 @@ from mpc_physics_predictor import (
     load_physics_artifact,
     validate_physics_artifact,
 )
+from p_mpc_run_support import PROJECT_ROOT
 
 
 HORIZONS_S = (50.0, 100.0, 300.0)
@@ -238,7 +239,7 @@ def calibrate_actual_replay(
 
 def _validate_output_path(path: Path) -> Path:
     resolved = path.resolve()
-    model_data = (Path(__file__).resolve().parent / "model_data").resolve()
+    model_data = (PROJECT_ROOT / "model_data").resolve()
     if resolved == model_data or model_data in resolved.parents:
         raise ValueError("calibrated artifact must not be written into model_data")
     return resolved

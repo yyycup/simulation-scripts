@@ -20,10 +20,10 @@ from typing import Mapping
 import numpy as np
 import pandas as pd
 
-from experiments.physics_p.evaluation.evaluate_p_shadow_actual_replay import (
+from ..evaluation.evaluate_p_shadow_actual_replay import (
     evaluate_actual_command_replay,
 )
-from experiments.physics_p.identification.fit_mpc_physics_predictor import (
+from ..identification.fit_mpc_physics_predictor import (
     _dynamic_validation_metric,
 )
 from mpc_physics_predictor import (
@@ -34,13 +34,13 @@ from mpc_physics_predictor import (
     validate_physics_artifact,
 )
 from mpc_physics_shadow import battery_heat_generation_w
-from experiments.physics_p.tuning.run_p_mpc_short_comparison import (
+from ..tuning.run_p_mpc_short_comparison import (
     DEFAULT_P_ARTIFACT,
 )
+from p_mpc_run_support import PROJECT_ROOT
 from thermal_batch_config import AMBIENT_TEMP_C, INITIAL_TEMP_C
 
 
-PROJECT_ROOT = Path(__file__).resolve().parent
 DEFAULT_OUTPUT_ROOT = (
     PROJECT_ROOT
     / "outputs"

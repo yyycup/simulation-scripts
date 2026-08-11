@@ -7,7 +7,7 @@ from mpc_physics_predictor import DEFAULT_PHYSICS_ARTIFACT
 class BuildPCompressorDisplacementVariantTests(unittest.TestCase):
     def test_builder_scales_capacity_and_declares_matching_power_scale(self):
         try:
-            from build_p_compressor_displacement_variant import (
+            from experiments.physics_p.calibration.build_p_compressor_displacement_variant import (
                 build_displacement_variant,
             )
         except ImportError as exc:
@@ -33,7 +33,7 @@ class BuildPCompressorDisplacementVariantTests(unittest.TestCase):
 
     def test_builder_rejects_non_reducing_scale(self):
         try:
-            from build_p_compressor_displacement_variant import (
+            from experiments.physics_p.calibration.build_p_compressor_displacement_variant import (
                 build_displacement_variant,
             )
         except ImportError as exc:

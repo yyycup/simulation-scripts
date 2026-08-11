@@ -10,15 +10,15 @@ from pathlib import Path
 
 import pandas as pd
 
-from experiments.physics_p.evaluation.evaluate_p_shadow_actual_replay import (
+from ..evaluation.evaluate_p_shadow_actual_replay import (
     evaluate_actual_command_replay,
 )
 from mpc_physics_predictor import load_physics_artifact, validate_physics_artifact
+from p_mpc_run_support import PROJECT_ROOT
 
 
 DEFAULT_SCALE = 0.74
 DEFAULT_HORIZONS_S = (5.0, 25.0, 50.0, 100.0, 225.0, 300.0)
-PROJECT_ROOT = Path(__file__).resolve().parent
 
 
 def portable_calibration_source(value: str | Path) -> str:

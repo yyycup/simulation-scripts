@@ -7,7 +7,7 @@ from mpc_physics_predictor import (
     DEFAULT_PHYSICS_ARTIFACT,
     DEFAULT_THERMAL_PARAMETERS,
 )
-from refine_p_thermal_capacities import (
+from experiments.physics_p.calibration.refine_p_thermal_capacities import (
     build_capacity_variants,
     select_capacity_variant,
 )

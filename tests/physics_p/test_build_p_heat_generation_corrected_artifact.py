@@ -1,12 +1,12 @@
 import copy
 import unittest
-from pathlib import Path
 
-from build_p_heat_generation_corrected_artifact import (
+from experiments.physics_p.calibration.build_p_heat_generation_corrected_artifact import (
     DEFAULT_SCALE,
     build_corrected_artifact,
 )
 from mpc_physics_predictor import DEFAULT_PHYSICS_ARTIFACT
+from p_mpc_run_support import PROJECT_ROOT
 
 
 class BuildPHeatGenerationCorrectedArtifactTests(unittest.TestCase):
@@ -72,9 +72,7 @@ class BuildPHeatGenerationCorrectedArtifactTests(unittest.TestCase):
         )
 
     def test_build_stores_project_calibration_source_as_relative_path(self):
-        absolute_source = (
-            Path(__file__).resolve().parent / "outputs" / "calibration.csv"
-        )
+        absolute_source = PROJECT_ROOT / "outputs" / "calibration.csv"
 
         corrected = build_corrected_artifact(
             copy.deepcopy(DEFAULT_PHYSICS_ARTIFACT),

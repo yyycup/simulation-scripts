@@ -6,8 +6,8 @@ from unittest.mock import patch
 import numpy as np
 import pandas as pd
 
-import calibrate_p_actual_replay as calibration
-from calibrate_p_actual_replay import (
+import experiments.physics_p.calibration.calibrate_p_actual_replay as calibration
+from experiments.physics_p.calibration.calibrate_p_actual_replay import (
     PHYSICAL_TANK_HEAT_CAPACITY_J_K,
     STRUCTURAL_DELAY_CORRECTIONS,
     THERMAL_CALIBRATION_KEYS,
