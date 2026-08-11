@@ -24,7 +24,8 @@ ensure_env_library_bin_on_path()
 
 from mpc_predictor_selection import PHYSICS_P
 from mpc_flow_direction_strategies import runtime_mpc_params_for_scene
-from run_p_mpc_short_comparison import (
+from p_mpc_run_support import (
+    PROJECT_ROOT,
     SCENES,
     source_csv_for_scene,
     summarize_run,
@@ -33,7 +34,6 @@ from thermal_batch_config import INITIAL_TEMP_C
 from thermal_case_simulator import simulate_case
 
 
-PROJECT_ROOT = Path(__file__).resolve().parent
 DEFAULT_OUTPUT_ROOT = PROJECT_ROOT / "outputs" / "p_mpc_operational_v1"
 DEFAULT_OPERATIONAL_P_ARTIFACT = (
     PROJECT_ROOT
