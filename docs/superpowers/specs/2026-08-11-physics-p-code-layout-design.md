@@ -163,6 +163,11 @@ Physics-P 已完成闭环验证并合入 `main`。当前功能边界是清楚的
 这只修复测试环境依赖，不改变 tuning runner 的历史默认 artifact，也不得把旧
 `outputs/` artifact 复制或提交进仓库。
 
+同样，`test_p_model_boundary_validation.py` 必须向
+`build_boundary_table(...)` 显式传入该已跟踪 operational artifact。boundary runner
+继续保留历史 experimental 默认值；测试不得依赖 clean checkout 中不存在的
+ignored `outputs/` 文件。
+
 ## 8. 导入与路径规则
 
 ### 8.1 导入方向

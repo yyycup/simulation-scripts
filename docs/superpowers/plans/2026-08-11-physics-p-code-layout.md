@@ -968,6 +968,21 @@ from experiments.physics_p.evaluation.plot_p_mpc_local_formal_results import (
 )
 ```
 
+In `test_p_model_boundary_validation.py`, use the tracked operational artifact
+as an explicit clean-checkout fixture:
+
+```python
+from run_p_mpc_operational import DEFAULT_OPERATIONAL_P_ARTIFACT
+
+# PhysicsPBoundaryValidationTests.setUpClass
+cls.frame = build_boundary_table(
+    artifact_path=DEFAULT_OPERATIONAL_P_ARTIFACT,
+)
+```
+
+Do not change the boundary runner's historical `DEFAULT_P_ARTIFACT` and do not
+copy the ignored experimental artifact into the repository.
+
 - [ ] **Step 2: Run the plotting test and verify the clean-checkout gap is visible**
 
 Run:
