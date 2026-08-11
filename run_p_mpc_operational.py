@@ -36,11 +36,7 @@ from thermal_case_simulator import simulate_case
 
 DEFAULT_OUTPUT_ROOT = PROJECT_ROOT / "outputs" / "p_mpc_operational_v1"
 DEFAULT_OPERATIONAL_P_ARTIFACT = (
-    PROJECT_ROOT
-    / "outputs"
-    / "mpc_predictor_low_speed_retrain_v1"
-    / "thermal_bias_correction_v3"
-    / "physics_p_heat_generation_corrected.json"
+    PROJECT_ROOT / "model_data" / "physics_p_operational_v1.json"
 )
 OPERATIONAL_HORIZON_STEPS_BY_SCENE = {
     "peak": 14,

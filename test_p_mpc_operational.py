@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 import thermal_system
 
+from p_mpc_run_support import PROJECT_ROOT
 from run_p_mpc_operational import (
     DEFAULT_OPERATIONAL_P_ARTIFACT,
     OPERATIONAL_HORIZON_STEPS_BY_SCENE,
@@ -86,16 +87,12 @@ class PhysicsPMpcOperationalTest(unittest.TestCase):
                 )
         self.assertEqual(thermal_system.V_disp_m3_per_rev, original)
 
-    def test_default_artifact_is_the_original_displacement_p_model(self):
+    def test_default_artifact_is_tracked_operational_p_model(self):
         from run_p_mpc_operational import displacement_scale_from_artifact
 
         self.assertEqual(
-            DEFAULT_OPERATIONAL_P_ARTIFACT.name,
-            "physics_p_heat_generation_corrected.json",
-        )
-        self.assertIn(
-            "thermal_bias_correction_v3",
-            DEFAULT_OPERATIONAL_P_ARTIFACT.parts,
+            DEFAULT_OPERATIONAL_P_ARTIFACT,
+            PROJECT_ROOT / "model_data" / "physics_p_operational_v1.json",
         )
         self.assertTrue(DEFAULT_OPERATIONAL_P_ARTIFACT.is_file())
         self.assertEqual(

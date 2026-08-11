@@ -4,6 +4,7 @@ from pathlib import Path
 import mpc_evaporator_capacity_model as evap_model
 import mpc_flow_direction_strategies as flow_mpc
 import pack
+import run_p_mpc_operational as p_operational
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
@@ -25,6 +26,10 @@ class ModelDataPathTest(unittest.TestCase):
             flow_mpc.DEFAULT_REDUCED_MODEL_CALIBRATION_PATH,
             MODEL_DATA_ROOT / "mpc_reduced_model_best_theta.json",
         )
+        self.assertEqual(
+            p_operational.DEFAULT_OPERATIONAL_P_ARTIFACT,
+            MODEL_DATA_ROOT / "physics_p_operational_v1.json",
+        )
 
     def test_required_model_data_files_exist(self):
         required = (
@@ -32,6 +37,7 @@ class ModelDataPathTest(unittest.TestCase):
             MODEL_DATA_ROOT / "mpc_evaporator_capacity_candidate_b.json",
             MODEL_DATA_ROOT / "candidate_b_capacity_limits_grid.csv",
             MODEL_DATA_ROOT / "mpc_reduced_model_best_theta.json",
+            MODEL_DATA_ROOT / "physics_p_operational_v1.json",
         )
         self.assertEqual([path for path in required if not path.is_file()], [])
 
