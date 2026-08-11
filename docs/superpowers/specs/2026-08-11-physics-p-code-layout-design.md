@@ -168,6 +168,14 @@ Physics-P 已完成闭环验证并合入 `main`。当前功能边界是清楚的
 继续保留历史 experimental 默认值；测试不得依赖 clean checkout 中不存在的
 ignored `outputs/` 文件。
 
+完整 Physics-P discovery 还暴露出两个与目录迁移无关、但会阻止 clean suite 的旧
+契约缺口。`battery_heat_generation_scale` 是 actual-replay 校准后的独立修正量，
+不得被 dynamic identification 重新拟合；dynamic artifact 必须保留 base artifact
+中的该值，缺省时使用 `1.0`。此外，容量拟合的低速约束覆盖低于
+`MINIMUM_ACTIVE_RPM=1000` 的点；机械 smoke 测试应在 `999 rpm` 验证该约束，
+不得把 `1000 rpm` 活跃边界错误要求为小于 `25 W`。修复仅限 identification
+工具和对应测试，不修改正式 operational asset、运行时 predictor 或控制逻辑。
+
 ## 8. 导入与路径规则
 
 ### 8.1 导入方向

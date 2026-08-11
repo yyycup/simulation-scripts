@@ -1286,9 +1286,64 @@ git commit -m "refactor: package Physics-P calibration tools"
 
 **Files:**
 - Move tests: `test_mpc_physics_p_closed_loop.py`, `test_mpc_physics_shadow.py`, `test_mpc_predictor_selection.py`, `test_p_mpc_operational.py`
+- Modify: `experiments/physics_p/identification/fit_mpc_physics_predictor.py`
+- Modify: `tests/physics_p/test_mpc_physics_predictor.py`
 - Modify: `tests/physics_p/test_layout_contract.py`
 
-- [ ] **Step 1: Add final module and file inventories to the layout contract**
+- [ ] **Step 1: Repair the two pre-existing full-discovery contract gaps**
+
+The existing failing dynamic-fit tests are the RED evidence: adding
+`battery_heat_generation_scale` to `DEFAULT_THERMAL_PARAMETERS` expanded
+`DYNAMIC_START` without expanding the manually bounded dynamic fit. The value is
+an actual-replay correction and must remain frozen during dynamic identification.
+
+First strengthen
+`test_dynamic_artifact_can_select_physical_battery_plate_structure` by passing a
+base artifact whose thermal data contains `battery_heat_generation_scale=0.74`
+and asserting that `_dynamic_artifact(...)` preserves `0.74`.
+
+Then exclude the correction-only key from the fitted thermal vector:
+
+```python
+THERMAL_KEYS = tuple(
+    name
+    for name in DEFAULT_THERMAL_PARAMETERS
+    if name not in {
+        "coolant_cp_j_kg_k",
+        "battery_heat_generation_scale",
+    }
+)
+```
+
+When `_dynamic_artifact(...)` rebuilds `artifact["thermal"]`, preserve the base
+value or fall back to the runtime default:
+
+```python
+"battery_heat_generation_scale": float(
+    base_artifact.get("thermal", {}).get(
+        "battery_heat_generation_scale",
+        DEFAULT_THERMAL_PARAMETERS["battery_heat_generation_scale"],
+    )
+),
+```
+
+In `test_empty_validation_smoke_produces_valid_artifact`, evaluate the
+subminimum low-speed constraint at `999 rpm`, not at the active boundary
+`1000 rpm`. Run the three formerly failing `PhysicsFitTests` and verify they now
+pass before continuing. Do not change capacity formulas, fit thresholds, the
+operational asset, or runtime predictor behavior.
+
+Commit this focused pre-existing bug fix before the file-layout changes:
+
+```powershell
+git add -- `
+  experiments/physics_p/identification/fit_mpc_physics_predictor.py `
+  tests/physics_p/test_mpc_physics_predictor.py
+git diff --cached --check
+git commit -m "fix: freeze Physics-P heat correction during fitting"
+```
+
+- [ ] **Step 2: Add final module and file inventories to the layout contract**
 
 Add these constants above the test class:
 
@@ -1396,7 +1451,7 @@ def test_all_existing_physics_p_tests_live_in_the_test_package(self):
     )
 ```
 
-- [ ] **Step 2: Run the final tree contract and verify the four remaining root tests fail it**
+- [ ] **Step 3: Run the final tree contract and verify the four remaining root tests fail it**
 
 ```powershell
 & $python -m unittest -v tests.physics_p.test_layout_contract
@@ -1404,7 +1459,7 @@ def test_all_existing_physics_p_tests_live_in_the_test_package(self):
 
 Expected: the first four layout checks pass; `test_all_existing_physics_p_tests_live_in_the_test_package` fails and names the four remaining root tests.
 
-- [ ] **Step 3: Move the four production-boundary tests**
+- [ ] **Step 4: Move the four production-boundary tests**
 
 ```powershell
 git mv -- test_mpc_physics_p_closed_loop.py tests/physics_p/test_mpc_physics_p_closed_loop.py
@@ -1424,7 +1479,7 @@ self.assertEqual(
 )
 ```
 
-- [ ] **Step 4: Run the packaged P suite and the frozen 74-test boundary**
+- [ ] **Step 5: Run the packaged P suite and the frozen 74-test boundary**
 
 ```powershell
 & $python -m unittest discover -s tests/physics_p -t . -p 'test_*.py'
@@ -1438,7 +1493,7 @@ self.assertEqual(
 
 Expected: P discovery runs 255 preserved tests plus 5 layout-contract tests, so `Ran 260 tests`; boundary command remains `Ran 74 tests`; both end with `OK`.
 
-- [ ] **Step 5: Commit the test layout**
+- [ ] **Step 6: Commit the test layout**
 
 ```powershell
 git add -- tests/physics_p
