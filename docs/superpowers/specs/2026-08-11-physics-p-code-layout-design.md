@@ -142,8 +142,9 @@ Physics-P 已完成闭环验证并合入 `main`。当前功能边界是清楚的
 | `run_p_model_boundary_validation.py` | `experiments.physics_p.evaluation.run_p_model_boundary_validation` |
 | `compare_mpc_predictor_formal_results.py` | `experiments.physics_p.evaluation.compare_mpc_predictor_formal_results` |
 | `plot_p_peak_displacement_comparison.py` | `experiments.physics_p.evaluation.plot_p_peak_displacement_comparison` |
+| `figures/gen_fig_p_mpc_local_formal.py`（当前被忽略、仅存在于已保留的 Physics-P worktree） | `experiments.physics_p.evaluation.plot_p_mpc_local_formal_results` |
 
-已有 `figures/gen_fig_p_mpc_local_formal.py` 已位于专门目录，不在本次移动范围内。
+`test_plot_p_mpc_local_formal_results.py` 已受 Git 跟踪，但当前 `main` 的 clean checkout 缺少被 `.gitignore` 排除的 `figures/gen_fig_p_mpc_local_formal.py`，因此该测试会在导入阶段失败。实施时必须把已保留 worktree 中的现有 helper 原样纳入新 evaluation 包，再只调整 `PROJECT_ROOT` 来源；不得删除测试、添加 skip 或继续依赖另一个 worktree。
 
 ### 7.4 调参与正式实验 `experiments/physics_p/tuning/`
 
@@ -224,6 +225,7 @@ tests.physics_p.*
 & 'C:\Users\24776\miniforge3\envs\btms\python.exe' -m experiments.physics_p.identification.fit_mpc_physics_predictor --help
 & 'C:\Users\24776\miniforge3\envs\btms\python.exe' -m experiments.physics_p.calibration.build_p_heat_generation_corrected_artifact --help
 & 'C:\Users\24776\miniforge3\envs\btms\python.exe' -m experiments.physics_p.evaluation.run_p_model_boundary_validation --help
+& 'C:\Users\24776\miniforge3\envs\btms\python.exe' -m experiments.physics_p.evaluation.plot_p_mpc_local_formal_results --help
 & 'C:\Users\24776\miniforge3\envs\btms\python.exe' -m experiments.physics_p.tuning.run_p_mpc_short_comparison --help
 ```
 
@@ -367,7 +369,7 @@ model_data/physics_p_operational_v1.json
 
 ### 14.2 实施完成后的必做验证
 
-1. **导入/编译**：编译所有保留生产模块、20 个移动实验模块和 21 个移动测试；逐个导入移动模块。
+1. **导入/编译**：编译所有保留生产模块、20 个根目录迁移脚本、1 个补齐的正式绘图 helper 和 21 个移动测试；逐个导入 21 个实验模块。
 2. **CLI smoke**：所有带 CLI 的移动模块执行 `python -m ... --help` 成功，不发生相对导入或项目根路径错误。
 3. **Physics-P 专属测试**：第 11 节 discovery 命令全部通过，测试数量不得因移动减少。
 4. **相邻回归**：重跑 Physics-P 合并时的 277 项定向回归；如果测试路径变化导致命令重写，应记录新旧数量对照。
@@ -395,7 +397,7 @@ model_data/physics_p_operational_v1.json
 只有同时满足以下条件，目录整合才算完成：
 
 - 根目录只保留第 6 节列出的 Physics-P 生产文件和唯一正式入口；
-- 20 个实验模块全部位于第 7 节目标目录，并能按 `python -m` 调用；
+- 21 个实验模块全部位于第 7 节目标目录；18 个现有 CLI 按 `python -m` 调用，3 个库模块只用于导入；
 - 生产代码不存在对 `experiments.*` 的导入；
 - 正式参数资产位于 `model_data/physics_p_operational_v1.json` 且内容未变；
 - 21 个 P 专属测试全部保留在 `tests/physics_p/`；
