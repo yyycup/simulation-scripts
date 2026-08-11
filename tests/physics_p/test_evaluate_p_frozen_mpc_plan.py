@@ -4,8 +4,11 @@ from unittest import mock
 import numpy as np
 import pandas as pd
 
-import evaluate_p_frozen_mpc_plan as frozen
-from evaluate_p_frozen_mpc_plan import _extend_plan, evaluate_frozen_forecasts
+from experiments.physics_p.evaluation import evaluate_p_frozen_mpc_plan as frozen
+from experiments.physics_p.evaluation.evaluate_p_frozen_mpc_plan import (
+    _extend_plan,
+    evaluate_frozen_forecasts,
+)
 
 
 class _FakePack:

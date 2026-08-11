@@ -2,7 +2,7 @@ import unittest
 
 import pandas as pd
 
-from evaluate_dual_p_shadow import evaluate_dual_shadow
+from experiments.physics_p.evaluation.evaluate_dual_p_shadow import evaluate_dual_shadow
 
 
 class DualShadowEvaluationTests(unittest.TestCase):

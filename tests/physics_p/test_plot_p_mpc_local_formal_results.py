@@ -3,7 +3,10 @@ from pathlib import Path
 
 import pandas as pd
 
-from figures.gen_fig_p_mpc_local_formal import case_csv_paths, summarize_case
+from experiments.physics_p.evaluation.plot_p_mpc_local_formal_results import (
+    case_csv_paths,
+    summarize_case,
+)
 
 
 class PhysicsPMpcFormalPlotTest(unittest.TestCase):

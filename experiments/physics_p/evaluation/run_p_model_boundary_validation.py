@@ -22,7 +22,9 @@ from mpc_physics_predictor import (
     load_physics_artifact,
     physics_p_startup_fraction_value,
 )
-from experiments.physics_p.tuning.run_p_mpc_short_comparison import (
+from p_mpc_run_support import PROJECT_ROOT
+
+from ..tuning.run_p_mpc_short_comparison import (
     DEFAULT_P_ARTIFACT,
 )
 from thermal_loop import staged_fan_speed
@@ -33,7 +35,7 @@ from thermal_system import (
 )
 
 
-DEFAULT_OUTPUT_ROOT = Path("outputs/p_model_boundary_validation_v1")
+DEFAULT_OUTPUT_ROOT = PROJECT_ROOT / "outputs" / "p_model_boundary_validation_v1"
 DEFAULT_SPEEDS_RPM = (300.0, 650.0, 999.0, 1000.0, 1500.0, 1999.0, 2000.0, 6000.0)
 
 

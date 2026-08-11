@@ -7,8 +7,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from p_mpc_run_support import PROJECT_ROOT
 
-PROJECT_ROOT = Path(__file__).resolve().parent
 DEFAULT_BASELINE_CSV = (
     PROJECT_ROOT
     / "outputs"

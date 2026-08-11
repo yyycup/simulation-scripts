@@ -1,16 +1,19 @@
 import unittest
 
-from run_p_model_boundary_validation import (
+from experiments.physics_p.evaluation.run_p_model_boundary_validation import (
     DEFAULT_SPEEDS_RPM,
     build_boundary_table,
     summarize_boundary_table,
 )
+from run_p_mpc_operational import DEFAULT_OPERATIONAL_P_ARTIFACT
 
 
 class PhysicsPBoundaryValidationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.frame = build_boundary_table()
+        cls.frame = build_boundary_table(
+            artifact_path=DEFAULT_OPERATIONAL_P_ARTIFACT,
+        )
         cls.summary = summarize_boundary_table(cls.frame)
 
     def test_boundary_grid_contains_off_startup_and_active_points(self):

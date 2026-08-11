@@ -5,7 +5,7 @@ from tempfile import TemporaryDirectory
 
 import pandas as pd
 
-from compare_mpc_predictor_formal_results import (
+from experiments.physics_p.evaluation.compare_mpc_predictor_formal_results import (
     ARCHIVE_ID,
     CURRENT_CANDIDATE_B_ID,
     PHYSICS_P_ID,

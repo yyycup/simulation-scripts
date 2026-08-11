@@ -24,8 +24,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from p_mpc_run_support import PROJECT_ROOT
 
-PROJECT_ROOT = Path(__file__).resolve().parent
 PHYSICS_P_ID = "physics_p"
 CURRENT_CANDIDATE_B_ID = "current_candidate_b"
 ARCHIVE_ID = "archive_candidate_b_fee2f79_family"

@@ -4,7 +4,9 @@ import unittest
 
 import pandas as pd
 
-from evaluate_p_shadow_actual_replay import evaluate_actual_command_replay
+from experiments.physics_p.evaluation.evaluate_p_shadow_actual_replay import (
+    evaluate_actual_command_replay,
+)
 from mpc_physics_predictor import (
     DEFAULT_PHYSICS_ARTIFACT,
     initialize_physics_state,

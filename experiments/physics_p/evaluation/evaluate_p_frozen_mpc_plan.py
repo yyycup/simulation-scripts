@@ -18,6 +18,7 @@ import pandas as pd
 
 import thermal_case_simulator as sim
 from mpc_physics_shadow import PhysicsPShadowPredictor, battery_heat_generation_w
+from p_mpc_run_support import PROJECT_ROOT
 from thermal_batch_config import AMBIENT_TEMP_C
 
 
@@ -27,7 +28,7 @@ MAX_STEPS = 60
 CAPTURE_LOOKAHEAD_STEPS = 90
 ACTIVE_COMP_MARGIN_RPM = 1.0
 FLOW = "单向"
-OUTPUT_ROOT = Path("outputs/p_shadow_frozen_mpc_plan_active")
+OUTPUT_ROOT = PROJECT_ROOT / "outputs" / "p_shadow_frozen_mpc_plan_active"
 SOURCE_ROOT = (
     Path.home()
     / "Desktop"
@@ -43,13 +44,19 @@ SOURCES = {
     "freq": ("调频", SOURCE_ROOT / "调频输出单向mpc.csv"),
 }
 ARTIFACTS = {
-    "Old": Path(
-        "outputs/mpc_predictor_accuracy_correction_v2/artifacts/"
-        "physics_p_dynamic_supply_cp_fixed_v1.json"
+    "Old": (
+        PROJECT_ROOT
+        / "outputs"
+        / "mpc_predictor_accuracy_correction_v2"
+        / "artifacts"
+        / "physics_p_dynamic_supply_cp_fixed_v1.json"
     ),
-    "New": Path(
-        "outputs/p_shadow_actual_command_replay/calibration/"
-        "physics_p_actual_replay_corrected_v3_physical.json"
+    "New": (
+        PROJECT_ROOT
+        / "outputs"
+        / "p_shadow_actual_command_replay"
+        / "calibration"
+        / "physics_p_actual_replay_corrected_v3_physical.json"
     ),
 }
 ACTUAL_FIELDS = (

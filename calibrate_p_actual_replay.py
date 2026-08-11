@@ -16,7 +16,9 @@ ensure_env_library_bin_on_path()
 
 from scipy.optimize import least_squares
 
-from evaluate_p_shadow_actual_replay import evaluate_actual_command_replay
+from experiments.physics_p.evaluation.evaluate_p_shadow_actual_replay import (
+    evaluate_actual_command_replay,
+)
 from mpc_physics_predictor import (
     PHYSICAL_COOLANT_CP_J_KG_K,
     load_physics_artifact,
