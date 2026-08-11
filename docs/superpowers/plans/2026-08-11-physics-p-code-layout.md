@@ -787,6 +787,27 @@ from experiments.physics_p.tuning.run_p_mpc_local_formal import (
 )
 ```
 
+Import the tracked operational artifact for hermetic Physics-P test fixtures:
+
+```python
+from run_p_mpc_operational import DEFAULT_OPERATIONAL_P_ARTIFACT
+```
+
+In these three tests, pass the tracked fixture explicitly to
+`formal_runner.run_local_formal(...)`:
+
+```python
+# test_explicit_physics_p_records_native_bounds
+# test_strict_ablation_records_common_scope_and_propagates_flag
+# test_stdout_failure_does_not_turn_completed_run_into_failure
+artifact_path=DEFAULT_OPERATIONAL_P_ARTIFACT,
+```
+
+The three tests currently fail on a clean checkout because the tuning runner's
+historical default artifact lives under ignored `outputs/`. Do not copy, stage,
+or replace that experimental default; only make the tests hermetic with the
+already tracked operational artifact.
+
 Change the provenance lookup to:
 
 ```python

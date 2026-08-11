@@ -156,6 +156,13 @@ Physics-P 已完成闭环验证并合入 `main`。当前功能边界是清楚的
 
 这里的“formal”表示历史实验命名，不获得生产入口地位。唯一正式接入入口仍是根目录 `run_p_mpc_operational.py`。
 
+当前 `test_p_mpc_local_formal.py` 有三项 Physics-P 路径测试依赖被
+`.gitignore` 排除的旧实验 artifact；clean checkout 在进入 mock 的比较逻辑前就会
+因文件不存在而失败。迁移测试时，这三项必须显式传入已跟踪的
+`run_p_mpc_operational.DEFAULT_OPERATIONAL_P_ARTIFACT` 作为 hermetic fixture。
+这只修复测试环境依赖，不改变 tuning runner 的历史默认 artifact，也不得把旧
+`outputs/` artifact 复制或提交进仓库。
+
 ## 8. 导入与路径规则
 
 ### 8.1 导入方向
