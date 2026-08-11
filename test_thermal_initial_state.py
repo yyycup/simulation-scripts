@@ -1,10 +1,14 @@
+import inspect
 import unittest
+from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 import numpy as np
 from pack import BatteryPack
 
-from thermal_batch_config import INITIAL_TEMP_C, SIM_DT
-from thermal_case_simulator import initialize_thermal_temperatures
+import thermal_case_simulator as thermal_simulator
+from thermal_batch_config import AMBIENT_TEMP_C, INITIAL_TEMP_C, SIM_DT
+from thermal_case_simulator import initialize_thermal_temperatures, simulate_case
 from thermal_loop import (
     DEFAULT_REFRIGERATION_DYNAMICS,
     build_pack_config,
@@ -14,8 +18,66 @@ from thermal_loop import (
 
 
 class ThermalInitialStateTests(unittest.TestCase):
-    def test_coolant_tank_and_all_plate_nodes_share_initial_temperature(self):
+    def test_standard_simulation_defaults_thermal_loop_to_ambient_temperature(self):
+        parameter = inspect.signature(simulate_case).parameters.get(
+            "initial_thermal_temp_c"
+        )
+
+        self.assertIsNotNone(parameter)
+        self.assertEqual(AMBIENT_TEMP_C, 35.0)
+        self.assertEqual(parameter.default, 35.0)
+
+    def test_simulation_forwards_default_and_explicit_thermal_initial_temperature(self):
+        with TemporaryDirectory() as tmp:
+            for supplied_kwargs, expected_c in (
+                ({}, 35.0),
+                ({"initial_thermal_temp_c": 25.0}, 25.0),
+            ):
+                with self.subTest(expected_c=expected_c):
+                    with patch.object(
+                        thermal_simulator,
+                        "initialize_thermal_temperatures",
+                        side_effect=RuntimeError("stop at thermal initialization"),
+                    ) as initialize:
+                        with self.assertRaisesRegex(
+                            RuntimeError,
+                            "thermal initialization",
+                        ):
+                            simulate_case(
+                                "pid",
+                                "peak",
+                                "unidirectional",
+                                "missing_source.csv",
+                                f"main_{expected_c:g}.csv",
+                                f"snap_{expected_c:g}.csv",
+                                output_root=tmp,
+                                max_steps=1,
+                                force=True,
+                                **supplied_kwargs,
+                            )
+
+                    initialize.assert_called_once()
+                    self.assertEqual(
+                        initialize.call_args.kwargs["initial_temp_c"],
+                        expected_c,
+                    )
+
+    def test_coolant_tank_and_all_plate_nodes_default_to_ambient_temperature(self):
         tank_temp_k, plate_temps_k = initialize_thermal_temperatures(6)
+
+        expected_temp_k = AMBIENT_TEMP_C + 273.15
+        self.assertEqual(tank_temp_k, expected_temp_k)
+        np.testing.assert_array_equal(
+            plate_temps_k,
+            np.full(6, expected_temp_k),
+        )
+
+    def test_physics_p_can_explicitly_initialize_thermal_loop_at_25c(self):
+        self.assertEqual(INITIAL_TEMP_C, 25.0)
+        tank_temp_k, plate_temps_k = initialize_thermal_temperatures(
+            6,
+            initial_temp_c=INITIAL_TEMP_C,
+        )
 
         expected_temp_k = INITIAL_TEMP_C + 273.15
         self.assertEqual(tank_temp_k, expected_temp_k)

@@ -11,6 +11,7 @@ from thermal_control_strategies import create_controller
 from pack import BatteryPack
 from thermal_batch_config import (
     AGC_DATA_FILE,
+    AMBIENT_TEMP_C,
     AMBIENT_TEMP_K,
     INITIAL_TEMP_C,
     NEW_ROOT,
@@ -43,7 +44,7 @@ def _emit(log_func, message):
     return True
 
 
-def initialize_thermal_temperatures(n_plate_nodes, initial_temp_c=INITIAL_TEMP_C):
+def initialize_thermal_temperatures(n_plate_nodes, initial_temp_c=AMBIENT_TEMP_C):
     """Initialize the coolant tank and every cold-plate node uniformly."""
     initial_temp_k = float(initial_temp_c) + 273.15
     return initial_temp_k, np.full(int(n_plate_nodes), initial_temp_k, dtype=float)
@@ -286,6 +287,7 @@ def simulate_case(
     agc_data_file=AGC_DATA_FILE,
     dt=SIM_DT,
     target_temp_c=TARGET_TEMP_C,
+    initial_thermal_temp_c=AMBIENT_TEMP_C,
     temp_diff_limit_c=T_DIFF_LIMIT_C,
     mpc_flow_mode="switching",
     force=False,
@@ -410,7 +412,10 @@ def simulate_case(
     if mpc_flow_mode == "supervised" and not getattr(controller, "owns_flow_direction", False):
         flow_supervisor = SupervisoryFlowController(dt=dt)
 
-    t_tank_k, t_plate_k_array = initialize_thermal_temperatures(pack.cols)
+    t_tank_k, t_plate_k_array = initialize_thermal_temperatures(
+        pack.cols,
+        initial_temp_c=initial_thermal_temp_c,
+    )
     c_plate_node = PLATE_NODE_HEAT_CAPACITY_TOTAL / pack.cols
     is_reversed = False
     last_reverse_t = -999.0
@@ -843,4 +848,3 @@ def simulate_case(
         partial_csv.unlink()
     _emit(log_func, f"DONE {control} {scene} {flow}: {out_csv}")
     return {"out_csv": out_csv, "snap_csv": snap_csv, "skipped": False}
-

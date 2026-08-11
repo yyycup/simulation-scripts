@@ -71,6 +71,91 @@ def _validated_physics_p_artifact():
 
 
 class MpcPhysicsPClosedLoopTest(unittest.TestCase):
+    def test_legacy_compressor_power_objective_matches_origin_main(self):
+        self.assertEqual(
+            flow_mpc.LEGACY_COMPRESSOR_POWER_SPEED_COEFF,
+            (3.57e-6, 0.442, 34.0),
+        )
+        self.assertAlmostEqual(
+            flow_mpc.LEGACY_COMPRESSOR_POWER_MAX_W,
+            2814.52,
+            places=12,
+        )
+
+    def test_candidate_b_keeps_legacy_compressor_power_objective(self):
+        with (
+            patch.object(
+                flow_mpc,
+                "_legacy_compressor_power_expr",
+                wraps=flow_mpc._legacy_compressor_power_expr,
+            ) as legacy_power,
+            patch.object(
+                flow_mpc,
+                "_compressor_power_expr",
+                side_effect=AssertionError(
+                    "Candidate B must not use the Physics-P temperature-dependent power fit"
+                ),
+            ),
+        ):
+            controller = create_controller(
+                "mpc",
+                [0.0] * 10,
+                mpc_flow_mode="standard",
+                case_name="freq",
+                mpc_predictor=CANDIDATE_B,
+                mpc_horizon_override=8,
+            )
+
+        self.assertEqual(legacy_power.call_count, 2)
+        self.assertEqual(controller.predictor_name, CANDIDATE_B)
+
+    def test_mixed_integer_keeps_legacy_compressor_power_objective(self):
+        with (
+            patch.object(
+                flow_mpc,
+                "_legacy_compressor_power_expr",
+                wraps=flow_mpc._legacy_compressor_power_expr,
+            ) as legacy_power,
+            patch.object(
+                flow_mpc,
+                "_compressor_power_expr",
+                side_effect=AssertionError(
+                    "mixed-integer MPC must not use the Physics-P temperature-dependent power fit"
+                ),
+            ),
+        ):
+            flow_mpc.MixedIntegerFlowMPC([0.0] * 10, np_horizon=8)
+
+        legacy_power.assert_called_once()
+
+    def test_physics_p_keeps_temperature_dependent_compressor_power_objective(self):
+        with (
+            patch.object(
+                flow_mpc,
+                "_legacy_compressor_power_expr",
+                side_effect=AssertionError(
+                    "Physics-P must not use the legacy compressor power objective"
+                ),
+            ),
+            patch.object(
+                flow_mpc,
+                "_compressor_power_expr",
+                wraps=flow_mpc._compressor_power_expr,
+            ) as physics_power,
+        ):
+            controller = create_controller(
+                "mpc",
+                [0.0] * 10,
+                mpc_flow_mode="standard",
+                case_name="freq",
+                mpc_predictor=PHYSICS_P,
+                mpc_predictor_artifact=_validated_physics_p_artifact(),
+                mpc_horizon_override=8,
+            )
+
+        self.assertEqual(physics_power.call_count, 2)
+        self.assertEqual(controller.predictor_name, PHYSICS_P)
+
     def test_simulator_declares_temperature_bias_diagnostic_columns(self):
         self.assertEqual(
             thermal_simulator.OUTPUT_COLUMN_RENAMES[

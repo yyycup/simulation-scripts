@@ -3,6 +3,7 @@ import sys
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 import thermal_system
 
@@ -11,10 +12,32 @@ from run_p_mpc_operational import (
     OPERATIONAL_HORIZON_STEPS_BY_SCENE,
     operational_profile_for_scene,
     parse_args,
+    run_operational,
 )
+from thermal_batch_config import INITIAL_TEMP_C
 
 
 class PhysicsPMpcOperationalTest(unittest.TestCase):
+    def test_operational_runner_explicitly_uses_validated_25c_thermal_initial_state(self):
+        with TemporaryDirectory() as tmp:
+            with patch(
+                "run_p_mpc_operational._simulate_case_with_displacement",
+                side_effect=RuntimeError("stop after simulator boundary"),
+            ) as simulate:
+                with self.assertRaisesRegex(RuntimeError, "simulator boundary"):
+                    run_operational(
+                        scenes=["peak"],
+                        steps=1,
+                        output_root=tmp,
+                        force=True,
+                    )
+
+        self.assertEqual(
+            simulate.call_args.kwargs.get("initial_thermal_temp_c"),
+            25.0,
+        )
+        self.assertEqual(INITIAL_TEMP_C, 25.0)
+
     def test_peak_profile_enables_online_temperature_bias_compensation(self):
         profile = operational_profile_for_scene("peak")
 

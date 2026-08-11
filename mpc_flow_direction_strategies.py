@@ -86,6 +86,12 @@ from mpc_predictor_selection import (
 )
 
 PUMP_POWER_SPEED_COEFF = (2.27321928e-09, -1.62756913e-05, 4.41581449e-02, -3.49442214e01)
+LEGACY_COMPRESSOR_POWER_SPEED_COEFF = (3.57e-6, 0.442, 34.0)
+LEGACY_COMPRESSOR_POWER_MAX_W = (
+    LEGACY_COMPRESSOR_POWER_SPEED_COEFF[0] * N_COMP_MAX_RPM**2
+    + LEGACY_COMPRESSOR_POWER_SPEED_COEFF[1] * N_COMP_MAX_RPM
+    + LEGACY_COMPRESSOR_POWER_SPEED_COEFF[2]
+)
 # Fit on the current detailed refrigeration-cycle steady grid.  The form keeps
 # mass-flow dependence proportional to speed and lets specific work vary with
 # coolant/ambient temperature without adding a pump-speed coupling term.
@@ -465,6 +471,11 @@ def _pump_power_speed_value(n_rpm):
 def _pump_power_speed_expr(m, n_rpm):
     a3, a2, a1, a0 = PUMP_POWER_SPEED_COEFF
     return m.Intermediate(a3 * n_rpm**3 + a2 * n_rpm**2 + a1 * n_rpm + a0)
+
+
+def _legacy_compressor_power_expr(m, n_comp_rpm):
+    a2, a1, a0 = LEGACY_COMPRESSOR_POWER_SPEED_COEFF
+    return m.Intermediate(a2 * n_comp_rpm**2 + a1 * n_comp_rpm + a0)
 
 
 def compressor_power_value(n_comp_rpm, t_cool_c, t_ambient_c):
@@ -1111,14 +1122,13 @@ class MPCControllerDual:
                 * compressor_active_power
             )
         else:
-            P_comp = _compressor_power_expr(
-                self.m,
-                self.N_comp,
-                T_cool,
-                T_amb,
-            )
+            P_comp = _legacy_compressor_power_expr(self.m, self.N_comp)
         P_pump = _pump_power_speed_expr(self.m, self.N_pump)
-        P_comp_max = compressor_power_normalization_w()
+        P_comp_max = (
+            compressor_power_normalization_w()
+            if self.predictor_name == PHYSICS_P
+            else LEGACY_COMPRESSOR_POWER_MAX_W
+        )
         P_pump_max = _pump_power_speed_value(N_PUMP_MAX_RPM)
         if self.predictor_name == PHYSICS_P:
             q_evap_unbounded_w = self.m.Intermediate(
@@ -3084,14 +3094,9 @@ class MixedIntegerFlowMPC:
 
         avg_temp_c = m.Intermediate(avg_temp - 273.15)
         spread_sum = sum((t_col - avg_temp) ** 2 for t_col in self.t_cols)
-        P_comp = _compressor_power_expr(
-            m,
-            self.u_ncomp,
-            self.t_cool - 273.15,
-            self.t_amb - 273.15,
-        )
+        P_comp = _legacy_compressor_power_expr(m, self.u_ncomp)
         P_pump = _pump_power_speed_expr(m, self.u_npump)
-        P_comp_max = compressor_power_normalization_w()
+        P_comp_max = LEGACY_COMPRESSOR_POWER_MAX_W
         P_pump_max = _pump_power_speed_value(N_PUMP_MAX_RPM)
         self.switch_abs = m.Var(lb=0)
         m.Equation(self.d_flow * self.d_flow == 1)

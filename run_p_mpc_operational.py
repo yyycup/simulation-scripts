@@ -29,6 +29,7 @@ from run_p_mpc_short_comparison import (
     source_csv_for_scene,
     summarize_run,
 )
+from thermal_batch_config import INITIAL_TEMP_C
 from thermal_case_simulator import simulate_case
 
 
@@ -319,6 +320,7 @@ def run_operational(
             force=force,
             max_steps=steps,
             target_temp_c=25.0,
+            initial_thermal_temp_c=INITIAL_TEMP_C,
             mpc_flow_mode="standard",
             result_tag=stem,
             mpc_predictor=PHYSICS_P,
