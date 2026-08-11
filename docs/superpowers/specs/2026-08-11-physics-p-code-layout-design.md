@@ -121,7 +121,7 @@ Physics-P 已完成闭环验证并合入 `main`。当前功能边界是清楚的
 | `evaluate_mpc_predictors.py` | `experiments.physics_p.identification.evaluate_mpc_predictors` |
 | `evaluate_p_identification_rollouts.py` | `experiments.physics_p.identification.evaluate_p_identification_rollouts` |
 
-`predictor_identification_data.py` 和 `mpc_lpv_predictor.py` 是实验库模块，不宣传为独立正式命令；其余文件保留现有 CLI。
+`predictor_identification_data.py`、`mpc_lpv_predictor.py` 和 `evaluate_mpc_predictors.py` 是实验库模块，不宣传为独立正式命令；其余文件保留现有 CLI。
 
 ### 7.2 校准 `experiments/physics_p/calibration/`
 
@@ -257,7 +257,7 @@ model_data/physics_p_operational_v1.json
 
 迁移要求：
 
-1. 使用 Git 受控移动，目标文件内容和 SHA-256 必须与迁移前一致。
+1. 使用 Git 受控移动，目标文件内容和 SHA-256 必须与迁移前一致；该历史资产含 Python JSON loader 支持的 `NaN` token，不得使用严格 JSON 工具重序列化或规范化。
 2. 更新 `run_p_mpc_operational.DEFAULT_OPERATIONAL_P_ARTIFACT` 指向新路径。
 3. 更新 `test_p_mpc_operational.py` 的路径契约。
 4. 更新 `test_model_data_paths.py`，把新文件列入 clean-checkout 必备模型数据。
