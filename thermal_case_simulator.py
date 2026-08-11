@@ -1,14 +1,17 @@
 import time
+from collections.abc import Mapping
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 from age_model import AgingModel280Ah
+from mpc_physics_shadow import PhysicsPShadowPredictor, battery_heat_generation_w
 from thermal_control_strategies import create_controller
 from pack import BatteryPack
 from thermal_batch_config import (
     AGC_DATA_FILE,
+    AMBIENT_TEMP_C,
     AMBIENT_TEMP_K,
     INITIAL_TEMP_C,
     NEW_ROOT,
@@ -31,10 +34,20 @@ from thermal_loop import (
 
 
 def _emit(log_func, message):
-    if log_func is not None:
-        log_func(message)
-    else:
-        print(message, flush=True)
+    try:
+        if log_func is not None:
+            log_func(message)
+        else:
+            print(message, flush=True)
+    except (OSError, ValueError):
+        return False
+    return True
+
+
+def initialize_thermal_temperatures(n_plate_nodes, initial_temp_c=AMBIENT_TEMP_C):
+    """Initialize the coolant tank and every cold-plate node uniformly."""
+    initial_temp_k = float(initial_temp_c) + 273.15
+    return initial_temp_k, np.full(int(n_plate_nodes), initial_temp_k, dtype=float)
 
 
 def load_current_profile(scene, times, agc_data_file=AGC_DATA_FILE):
@@ -146,6 +159,23 @@ OUTPUT_COLUMN_RENAMES = {
     "Min_J_Rev_Improvement": "Minimum reversal index improvement",
     "MPC_Target_Temp_C": "MPC dynamic target temperature",
     "MPC_Solve_Time_S": "MPC solve time",
+    "MPC_Solve_Error": "MPC solve error",
+    "MPC_Solver_Model_Path": "MPC solver model path",
+    "MPC_Solve_Recovery_Used": "MPC solve recovery used",
+    "MPC_Solve_Recovery_Reason": "MPC solve recovery reason",
+    "MPC_N_Comp_Raw_RPM": "MPC raw compressor command",
+    "MPC_N_Comp_Applied_RPM": "MPC applied compressor command",
+    "MPC_Comp_Command_Filter_Alpha": "MPC compressor command filter alpha",
+    "MPC_P_Temp_Bias_Enabled": "MPC P temperature bias compensation enabled",
+    "MPC_P_Temp_Bias_Innovation_C": "MPC P temperature prediction innovation",
+    "MPC_P_Temp_Bias_Step_C": "MPC P filtered temperature bias per step",
+    "MPC_P_Temp_Bias_End_C": "MPC P terminal temperature bias compensation",
+    "MPC_Prediction_Domain_Valid": "MPC prediction domain valid",
+    "MPC_T_Cool_Pred_Min_C": "MPC predicted minimum coolant temperature",
+    "MPC_T_Cool_Pred_Max_C": "MPC predicted maximum coolant temperature",
+    "MPC_T_Cool_Domain_Lower_C": "MPC coolant prediction domain lower bound",
+    "MPC_T_Cool_Domain_Upper_C": "MPC coolant prediction domain upper bound",
+    "MPC_T_Cool_Domain_Violation_C": "MPC coolant prediction domain violation",
     "MPC_T_Bat_Pred_1_C": "MPC predicted battery temperature +1 step",
     "MPC_T_Bat_Pred_5_C": "MPC predicted battery temperature +5 steps",
     "MPC_T_Bat_Pred_10_C": "MPC predicted battery temperature +10 steps",
@@ -257,6 +287,7 @@ def simulate_case(
     agc_data_file=AGC_DATA_FILE,
     dt=SIM_DT,
     target_temp_c=TARGET_TEMP_C,
+    initial_thermal_temp_c=AMBIENT_TEMP_C,
     temp_diff_limit_c=T_DIFF_LIMIT_C,
     mpc_flow_mode="switching",
     force=False,
@@ -266,9 +297,23 @@ def simulate_case(
     result_tag=None,
     current_profile_override=None,
     pid_params=None,
+    p_shadow_artifact=None,
+    p_shadow_artifacts=None,
+    p_shadow_horizons_s=(50.0, 100.0, 300.0),
+    p_shadow_command_source="hold_current",
+    mpc_predictor="candidate_b",
+    mpc_predictor_artifact=None,
+    mpc_horizon_override=None,
+    physics_p_mpc_overrides=None,
+    strict_predictor_ablation=False,
+    mpc_forecast_profile_steps=None,
+    progress_interval_steps=100,
     log_func=None,
 ):
     output_root = Path(output_root)
+    progress_interval_steps = int(progress_interval_steps)
+    if progress_interval_steps < 1:
+        raise ValueError("progress_interval_steps must be at least 1")
     out_dir = output_root / control
     out_dir.mkdir(parents=True, exist_ok=True)
     out_csv = out_dir / main_name
@@ -298,6 +343,7 @@ def simulate_case(
         else:
             window_start_s = float(start_time_s)
         old_df = old_df.loc[old_df[time_col] < window_start_s + float(duration_s)].copy()
+    forecast_source_df = old_df
     if max_steps is not None:
         old_df = old_df.head(max_steps).copy()
 
@@ -306,12 +352,21 @@ def simulate_case(
         raise ValueError(f"No rows to simulate for {control} {scene} {flow}: {source_csv}")
 
     times = old_df[time_col].to_numpy(dtype=float)
+    forecast_steps = n_steps
+    if mpc_forecast_profile_steps is not None:
+        requested_forecast_steps = int(mpc_forecast_profile_steps)
+        if requested_forecast_steps < 1:
+            raise ValueError("mpc_forecast_profile_steps must be at least 1")
+        forecast_steps = max(n_steps, requested_forecast_steps)
+    forecast_times = forecast_source_df[time_col].head(forecast_steps).to_numpy(dtype=float)
     if current_profile_override is None:
-        current_profile = load_current_profile(scene, times, agc_data_file=agc_data_file)
+        current_profile = load_current_profile(
+            scene, forecast_times, agc_data_file=agc_data_file
+        )
     else:
         current_profile = np.asarray(current_profile_override, dtype=float)
-        if current_profile.size != n_steps:
-            raise ValueError("current_profile_override length must match simulation steps")
+        if current_profile.size < n_steps:
+            raise ValueError("current_profile_override must cover all simulation steps")
     snapshot_indices = {0, int(n_steps / 3), int(2 * n_steps / 3), n_steps - 1}
 
     pack_config = build_pack_config(
@@ -334,6 +389,11 @@ def simulate_case(
         mpc_flow_mode=mpc_flow_mode,
         case_name=f"{scene} {flow} {main_name}",
         pid_params=controller_pid_params,
+        mpc_predictor=mpc_predictor,
+        mpc_predictor_artifact=mpc_predictor_artifact,
+        mpc_horizon_override=mpc_horizon_override,
+        physics_p_mpc_overrides=physics_p_mpc_overrides,
+        strict_predictor_ablation=strict_predictor_ablation,
     )
     mpc_params = getattr(controller, "mpc_params", None)
     if mpc_params is not None:
@@ -344,12 +404,18 @@ def simulate_case(
         _emit(log_func, f"J_rev_on: {mpc_params.j_rev_on}")
         _emit(log_func, f"dmax_comp: {mpc_params.dmax_comp}")
         _emit(log_func, f"dmax_pump: {mpc_params.dmax_pump}")
+        _emit(
+            log_func,
+            f"MPC predictor: {getattr(controller, 'predictor_name', 'candidate_b')}",
+        )
     flow_supervisor = None
     if mpc_flow_mode == "supervised" and not getattr(controller, "owns_flow_direction", False):
         flow_supervisor = SupervisoryFlowController(dt=dt)
 
-    t_tank_k = AMBIENT_TEMP_K
-    t_plate_k_array = np.full(pack.cols, AMBIENT_TEMP_K)
+    t_tank_k, t_plate_k_array = initialize_thermal_temperatures(
+        pack.cols,
+        initial_temp_c=initial_thermal_temp_c,
+    )
     c_plate_node = PLATE_NODE_HEAT_CAPACITY_TOTAL / pack.cols
     is_reversed = False
     last_reverse_t = -999.0
@@ -358,14 +424,46 @@ def simulate_case(
     if mpc_params is not None:
         initial_n_comp = getattr(controller, "last_n_comp", 0.0)
         initial_n_pump = getattr(controller, "last_n_pump", 0.0)
-        refrigeration_dynamic_state = initialize_refrigeration_dynamic_state(initial_n_comp, initial_n_pump)
+        refrigeration_dynamic_state = initialize_refrigeration_dynamic_state(
+            initial_n_comp,
+            initial_n_pump,
+            initial_temp_k=t_tank_k,
+            dt=dt,
+        )
     else:
         refrigeration_dynamic_state = None
     history = []
     snapshots = []
+    if p_shadow_artifact is not None and p_shadow_artifacts is not None:
+        raise ValueError("provide either p_shadow_artifact or p_shadow_artifacts, not both")
+    if p_shadow_command_source not in {"hold_current", "mpc_plan"}:
+        raise ValueError("p_shadow_command_source must be 'hold_current' or 'mpc_plan'")
+    p_shadows = {}
+    if p_shadow_artifact is not None:
+        p_shadows[None] = PhysicsPShadowPredictor(
+            p_shadow_artifact, dt_s=dt, horizons_s=p_shadow_horizons_s
+        )
+    elif p_shadow_artifacts is not None:
+        if not isinstance(p_shadow_artifacts, Mapping) or not p_shadow_artifacts:
+            raise ValueError("p_shadow_artifacts must be a non-empty mapping")
+        for raw_label, artifact_path in p_shadow_artifacts.items():
+            label = str(raw_label).strip()
+            if not label or not all(character.isalnum() or character == "_" for character in label):
+                raise ValueError("P shadow labels must contain only letters, numbers, or underscores")
+            p_shadows[label] = PhysicsPShadowPredictor(
+                artifact_path, dt_s=dt, horizons_s=p_shadow_horizons_s
+            )
+    if p_shadows:
+        _emit(
+            log_func,
+            "P shadow enabled: read-only, "
+            f"command_source={p_shadow_command_source}, "
+            f"models={tuple('default' if key is None else key for key in p_shadows)}, "
+            f"horizons={tuple(float(value) for value in p_shadow_horizons_s)}s",
+        )
     start = time.time()
 
-    _emit(log_func, f"START {control} {scene} {flow} steps={n_steps} soc0={pack_config['initial_soc']}")
+    _emit(log_func, f"START {control} {scene} {flow} steps={n_steps} forecast_steps={current_profile.size} soc0={pack_config['initial_soc']}")
     for step_no, _row in enumerate(old_df.itertuples(index=False)):
         t = times[step_no]
         t_outdoor = AMBIENT_TEMP_K
@@ -410,6 +508,53 @@ def simulate_case(
             is_reversed = controller.is_reversed
             last_reverse_t = getattr(controller, "last_switch_time", last_reverse_t)
         onoff_status = getattr(controller, "last_status", {}) if control == "on-off" else {}
+
+        p_shadow_record = {}
+        if p_shadows:
+            observed_dynamic = refrigeration_dynamic_state or {}
+            observed_state = {
+                "n_comp_eff_rpm": observed_dynamic.get("N_comp_eff", n_comp_used),
+                "n_pump_eff_rpm": observed_dynamic.get("N_pump_eff", n_pump_used),
+                "q_cond_w": observed_dynamic.get("Q_cond_eff", 0.0),
+                "q_evap_w": observed_dynamic.get("Q_evap_eff", 0.0),
+                "t_supply_c": observed_dynamic.get("T_pipe_supply_K", t_tank_k) - 273.15,
+                "t_plate_c": float(np.mean(t_plate_k_array)) - 273.15,
+                "t_return_c": observed_dynamic.get("T_pipe_return_K", t_tank_k) - 273.15,
+                "t_batt_c": pack.get_avg_temp() - 273.15,
+                "t_cool_c": t_tank_k - 273.15,
+            }
+            controller_plan = getattr(controller, "last_flow_info", {})
+            n_comp_preview = None
+            n_pump_preview = None
+            if p_shadow_command_source == "mpc_plan":
+                n_comp_preview = controller_plan.get("n_comp_plan_rpm")
+                n_pump_preview = controller_plan.get("n_pump_plan_rpm")
+                if n_comp_preview is None or n_pump_preview is None:
+                    raise RuntimeError("MPC planned command sequence is unavailable")
+            for label, p_shadow in p_shadows.items():
+                shadow_values = p_shadow.forecast(
+                    observed_state=observed_state,
+                    n_comp_cmd_rpm=n_comp_used,
+                    n_pump_cmd_rpm=n_pump_used,
+                    n_comp_cmd_preview_rpm=n_comp_preview,
+                    n_pump_cmd_preview_rpm=n_pump_preview,
+                    q_gen_preview_w=tuple(
+                        battery_heat_generation_w(value)
+                        for value in current_profile[
+                            step_no : step_no + p_shadow.max_forecast_steps
+                        ]
+                    ),
+                    t_ambient_c=t_outdoor - 273.15,
+                )
+                if label is None:
+                    p_shadow_record.update(shadow_values)
+                else:
+                    p_shadow_record.update(
+                        {
+                            key.replace("P_Shadow_", f"P_Shadow_{label}_", 1): value
+                            for key, value in shadow_values.items()
+                        }
+                    )
 
         thermal_step = simulate_thermal_loop_step(
             pack=pack,
@@ -514,6 +659,11 @@ def simulate_case(
             "Ex_Dot_Dest_Aux": thermal_step.get("Ex_dot_dest_aux", np.nan) / 1000.0,
             "Ex_Dot_Loss_Ambient": thermal_step.get("Ex_dot_loss_ambient", np.nan) / 1000.0,
         }
+        if p_shadows:
+            p_shadow_record["P_Shadow_T_Plate_Actual_C"] = (
+                float(np.mean(t_plate_k_array)) - 273.15
+            )
+        record.update(p_shadow_record)
         if onoff_status:
             record["OnOff_State"] = onoff_status.get("state", np.nan)
             record["OnOff_T_Avg_C"] = onoff_status.get("T_avg_C", np.nan)
@@ -525,6 +675,14 @@ def simulate_case(
             flow_info = flow_supervisor.last_flow_info
         if flow_info:
             record["MPC_Flow_Mode"] = flow_info.get("mode", "")
+            record["MPC_Predictor"] = getattr(
+                controller,
+                "predictor_name",
+                "candidate_b",
+            )
+            record["MPC_Strict_Predictor_Ablation"] = bool(
+                getattr(controller, "strict_predictor_ablation", False)
+            )
             record["Delta_T_Pred_Max"] = flow_info.get("delta_t_pred_max", np.nan)
             record["H_Down_Pred_Max"] = flow_info.get("h_down_pred_max", np.nan)
             record["Gamma_Hot_Pred_Max"] = flow_info.get("gamma_hot_pred_max", np.nan)
@@ -555,6 +713,69 @@ def simulate_case(
             record["MPC_Target_Temp_C"] = flow_info.get("target_temp_c", np.nan)
             record["MPC_Solve_Time_S"] = flow_info.get("solve_time_s", np.nan)
             record["MPC_Solved"] = bool(flow_info.get("solved", False))
+            record["MPC_Solve_Error"] = flow_info.get("solve_error", "")
+            record["MPC_Solver_Model_Path"] = flow_info.get(
+                "solver_model_path",
+                "",
+            )
+            record["MPC_Solve_Recovery_Used"] = bool(
+                flow_info.get("solve_recovery_used", False)
+            )
+            record["MPC_Solve_Recovery_Reason"] = flow_info.get(
+                "solve_recovery_reason",
+                "",
+            )
+            record["MPC_N_Comp_Raw_RPM"] = flow_info.get(
+                "n_comp_raw_rpm",
+                np.nan,
+            )
+            record["MPC_N_Comp_Applied_RPM"] = flow_info.get(
+                "n_comp_applied_rpm",
+                np.nan,
+            )
+            record["MPC_Comp_Command_Filter_Alpha"] = flow_info.get(
+                "comp_command_filter_alpha",
+                np.nan,
+            )
+            record["MPC_P_Temp_Bias_Enabled"] = bool(
+                flow_info.get("physics_p_temp_bias_enabled", False)
+            )
+            record["MPC_P_Temp_Bias_Innovation_C"] = flow_info.get(
+                "physics_p_temp_bias_innovation_c",
+                np.nan,
+            )
+            record["MPC_P_Temp_Bias_Step_C"] = flow_info.get(
+                "physics_p_temp_bias_step_c",
+                np.nan,
+            )
+            record["MPC_P_Temp_Bias_End_C"] = flow_info.get(
+                "physics_p_temp_bias_end_c",
+                np.nan,
+            )
+            record["MPC_Prediction_Domain_Valid"] = flow_info.get(
+                "prediction_domain_valid",
+                np.nan,
+            )
+            record["MPC_T_Cool_Pred_Min_C"] = flow_info.get(
+                "t_cool_pred_min_c",
+                np.nan,
+            )
+            record["MPC_T_Cool_Pred_Max_C"] = flow_info.get(
+                "t_cool_pred_max_c",
+                np.nan,
+            )
+            record["MPC_T_Cool_Domain_Lower_C"] = flow_info.get(
+                "t_cool_domain_lower_c",
+                np.nan,
+            )
+            record["MPC_T_Cool_Domain_Upper_C"] = flow_info.get(
+                "t_cool_domain_upper_c",
+                np.nan,
+            )
+            record["MPC_T_Cool_Domain_Violation_C"] = flow_info.get(
+                "t_cool_domain_violation_c",
+                np.nan,
+            )
             record["MPC_T_Bat_Pred_1_C"] = flow_info.get("t_batt_pred_1_c", np.nan)
             record["MPC_T_Bat_Pred_5_C"] = flow_info.get("t_batt_pred_5_c", np.nan)
             record["MPC_T_Bat_Pred_10_C"] = flow_info.get("t_batt_pred_10_c", np.nan)
@@ -603,7 +824,7 @@ def simulate_case(
                 }
             )
 
-        if (step_no + 1) % 100 == 0 or step_no == n_steps - 1:
+        if (step_no + 1) % progress_interval_steps == 0 or step_no == n_steps - 1:
             _output_dataframe(history).to_csv(partial_csv, index=False, encoding="utf-8-sig")
             elapsed = time.time() - start
             onoff_log = ""
@@ -627,7 +848,3 @@ def simulate_case(
         partial_csv.unlink()
     _emit(log_func, f"DONE {control} {scene} {flow}: {out_csv}")
     return {"out_csv": out_csv, "snap_csv": snap_csv, "skipped": False}
-
-
-
-

@@ -112,6 +112,11 @@ def create_controller(
     mpc_flow_mode="switching",
     case_name=None,
     pid_params=(0.85, 0.02, 2.0),
+    mpc_predictor="candidate_b",
+    mpc_predictor_artifact=None,
+    mpc_horizon_override=None,
+    physics_p_mpc_overrides=None,
+    strict_predictor_ablation=False,
 ):
     if control == "on-off":
         return OnOffController()
@@ -124,5 +129,10 @@ def create_controller(
             target_temp_c=target_temp_c,
             mpc_flow_mode=mpc_flow_mode,
             case_name=case_name,
+            predictor=mpc_predictor,
+            predictor_artifact=mpc_predictor_artifact,
+            mpc_horizon_override=mpc_horizon_override,
+            physics_p_mpc_overrides=physics_p_mpc_overrides,
+            strict_predictor_ablation=strict_predictor_ablation,
         )
     raise ValueError(f"Unknown control strategy: {control}")
