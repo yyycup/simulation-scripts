@@ -32,7 +32,9 @@ from mpc_physics_predictor import (
     validate_physics_artifact,
 )
 from mpc_physics_shadow import battery_heat_generation_w
-from run_p_mpc_short_comparison import DEFAULT_P_ARTIFACT
+from experiments.physics_p.tuning.run_p_mpc_short_comparison import (
+    DEFAULT_P_ARTIFACT,
+)
 from thermal_batch_config import AMBIENT_TEMP_C, INITIAL_TEMP_C
 
 

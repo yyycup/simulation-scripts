@@ -42,13 +42,13 @@ from thermal_batch_config import (
     N_COMP_OFF_RPM,
     SIM_DT,
 )
-from run_p_mpc_short_comparison import (
+from p_mpc_run_support import PROJECT_ROOT
+from .run_p_mpc_short_comparison import (
     DEFAULT_P_ARTIFACT,
     run_comparison,
 )
 
 
-PROJECT_ROOT = Path(__file__).resolve().parent
 DEFAULT_OUTPUT_ROOT = PROJECT_ROOT / "outputs" / "p_mpc_local_formal_v1"
 FORMAL_LOCAL_CASES = (
     {"scene": "peak", "horizon": 60, "steps": 1280},
@@ -57,8 +57,9 @@ FORMAL_LOCAL_CASES = (
 FORMAL_PROGRESS_INTERVAL_STEPS = 10
 EXPERIMENT_SCOPE = "native_controller_candidate"
 FORMAL_SOURCE_FILES = (
-    "run_p_mpc_local_formal.py",
-    "run_p_mpc_short_comparison.py",
+    "experiments/physics_p/tuning/run_p_mpc_local_formal.py",
+    "experiments/physics_p/tuning/run_p_mpc_short_comparison.py",
+    "p_mpc_run_support.py",
     "mpc_flow_direction_strategies.py",
     "mpc_physics_predictor.py",
     "thermal_case_simulator.py",

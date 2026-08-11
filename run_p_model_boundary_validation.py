@@ -22,7 +22,9 @@ from mpc_physics_predictor import (
     load_physics_artifact,
     physics_p_startup_fraction_value,
 )
-from run_p_mpc_short_comparison import DEFAULT_P_ARTIFACT
+from experiments.physics_p.tuning.run_p_mpc_short_comparison import (
+    DEFAULT_P_ARTIFACT,
+)
 from thermal_loop import staged_fan_speed
 from thermal_system import (
     clear_refrigeration_cycle_cache,

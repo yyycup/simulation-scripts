@@ -6,15 +6,16 @@ from unittest.mock import patch
 
 
 import pandas as pd
-import run_p_mpc_local_formal as formal_runner
+import experiments.physics_p.tuning.run_p_mpc_local_formal as formal_runner
 from mpc_predictor_selection import CANDIDATE_B, PHYSICS_P
-from run_p_mpc_local_formal import (
+from experiments.physics_p.tuning.run_p_mpc_local_formal import (
     FORMAL_LOCAL_CASES,
     FORMAL_PROGRESS_INTERVAL_STEPS,
     formal_local_cases,
     formal_scene_control_profiles,
     parse_progress_message,
 )
+from run_p_mpc_operational import DEFAULT_OPERATIONAL_P_ARTIFACT
 
 
 class PhysicsPMpcLocalFormalTest(unittest.TestCase):
@@ -104,7 +105,9 @@ class PhysicsPMpcLocalFormalTest(unittest.TestCase):
         self.assertEqual(status["resolved_compressor_command_upper_rpm"], 6000.0)
         provenance = status["run_provenance"]
         self.assertIsNone(provenance["physics_p_artifact"])
-        source_hash = provenance["source_files"]["run_p_mpc_local_formal.py"]["sha256"]
+        source_hash = provenance["source_files"][
+            "experiments/physics_p/tuning/run_p_mpc_local_formal.py"
+        ]["sha256"]
         self.assertEqual(len(source_hash), 64)
         self.assertEqual(provenance["predictor"], CANDIDATE_B)
         self.assertEqual(
@@ -153,6 +156,7 @@ class PhysicsPMpcLocalFormalTest(unittest.TestCase):
                 status_path = formal_runner.run_local_formal(
                     output_root=output_root,
                     predictor=PHYSICS_P,
+                    artifact_path=DEFAULT_OPERATIONAL_P_ARTIFACT,
                     peak_steps=2,
                     freq_steps=2,
                 )
@@ -208,6 +212,7 @@ class PhysicsPMpcLocalFormalTest(unittest.TestCase):
                 status_path = formal_runner.run_local_formal(
                     output_root=output_root,
                     predictor=PHYSICS_P,
+                    artifact_path=DEFAULT_OPERATIONAL_P_ARTIFACT,
                     peak_steps=2,
                     freq_steps=2,
                     strict_predictor_ablation=True,
@@ -245,6 +250,7 @@ class PhysicsPMpcLocalFormalTest(unittest.TestCase):
                 status_path = formal_runner.run_local_formal(
                     output_root=output_root,
                     predictor=PHYSICS_P,
+                    artifact_path=DEFAULT_OPERATIONAL_P_ARTIFACT,
                     peak_steps=2,
                     freq_steps=2,
                 )

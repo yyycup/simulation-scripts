@@ -19,16 +19,17 @@ ensure_env_library_bin_on_path()
 from mpc_flow_direction_strategies import runtime_mpc_params_for_scene
 from mpc_physics_predictor import load_physics_artifact
 from mpc_predictor_selection import PHYSICS_P
-from run_p_mpc_short_comparison import (
-    DEFAULT_P_ARTIFACT,
+from p_mpc_run_support import (
+    PROJECT_ROOT,
     SCENES,
     source_csv_for_scene,
     summarize_run,
 )
+from .run_p_mpc_short_comparison import DEFAULT_P_ARTIFACT
 from thermal_case_simulator import simulate_case
 
 
-DEFAULT_OUTPUT_ROOT = Path("outputs/p_mpc_controller_tuning_v1")
+DEFAULT_OUTPUT_ROOT = PROJECT_ROOT / "outputs" / "p_mpc_controller_tuning_v1"
 DEFAULT_HORIZONS = {"peak": 60, "freq": 45}
 
 

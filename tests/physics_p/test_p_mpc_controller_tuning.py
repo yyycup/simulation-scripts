@@ -3,7 +3,10 @@ import unittest
 import pandas as pd
 
 from mpc_flow_direction_strategies import runtime_mpc_params_for_scene
-from run_p_mpc_controller_tuning import _candidate_overrides, _select_candidates
+from experiments.physics_p.tuning.run_p_mpc_controller_tuning import (
+    _candidate_overrides,
+    _select_candidates,
+)
 
 
 class PhysicsPMpcControllerTuningTests(unittest.TestCase):
