@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 from gymnasium.utils.env_checker import check_env
 
 from td3_btms.env import (
@@ -15,6 +16,7 @@ from td3_btms.env import (
     profile_sha256,
 )
 from run_td3_training import create_run_directory, write_metadata
+from run_td3_evaluation import summarize_trajectory
 
 
 class CurrentProfileTests(unittest.TestCase):
@@ -186,6 +188,31 @@ class TrainingEntrypointTests(unittest.TestCase):
             self.assertEqual(data["scene"], "peak")
             self.assertEqual(data["profile_sha256"], profile_sha256(profile))
             self.assertEqual(data["reward_weights"]["power"], 0.05)
+
+
+class EvaluationEntrypointTests(unittest.TestCase):
+    def test_summary_uses_physical_columns(self):
+        frame = pd.DataFrame(
+            {
+                "mean_temp_c": [25.0, 26.0],
+                "max_temp_c": [25.5, 27.0],
+                "delta_temp_c": [0.2, 0.6],
+                "total_power_w": [1000.0, 3000.0],
+                "reward": [-0.1, -1.1],
+            }
+        )
+        summary = summarize_trajectory(frame, scene="peak", dt=5.0)
+
+        self.assertEqual(summary["steps"], 2)
+        self.assertAlmostEqual(summary["temperature_mae_c"], 0.5)
+        self.assertAlmostEqual(summary["max_temp_c"], 27.0)
+        self.assertAlmostEqual(summary["max_delta_temp_c"], 0.6)
+        self.assertAlmostEqual(summary["mean_total_power_kw"], 2.0)
+        self.assertAlmostEqual(
+            summary["total_energy_kwh"],
+            2000.0 * 10.0 / 3_600_000.0,
+        )
+        self.assertAlmostEqual(summary["cumulative_reward"], -1.2)
 
 
 if __name__ == "__main__":
