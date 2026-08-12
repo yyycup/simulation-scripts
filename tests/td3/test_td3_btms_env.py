@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -13,6 +14,7 @@ from td3_btms.env import (
     map_action_to_rpm,
     profile_sha256,
 )
+from run_td3_training import create_run_directory, write_metadata
 
 
 class CurrentProfileTests(unittest.TestCase):
@@ -156,6 +158,34 @@ class RewardAndStepTests(unittest.TestCase):
     def test_gymnasium_contract(self):
         env = BTMSTd3Env(scene="peak", current_profile=[560.0] * 8)
         check_env(env, skip_render_check=True)
+
+
+class TrainingEntrypointTests(unittest.TestCase):
+    def test_run_directory_refuses_to_overwrite(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            target = Path(temp_dir) / "run"
+            self.assertEqual(create_run_directory(target), target.resolve())
+            with self.assertRaisesRegex(FileExistsError, "already exists"):
+                create_run_directory(target)
+
+    def test_metadata_records_profile_hash(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "metadata.json"
+            profile = np.array([1.0, 2.0])
+            write_metadata(
+                path,
+                scene="peak",
+                seed=4,
+                total_timesteps=16,
+                dt=5.0,
+                profile=profile,
+                agc_data_file=None,
+            )
+
+            data = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(data["scene"], "peak")
+            self.assertEqual(data["profile_sha256"], profile_sha256(profile))
+            self.assertEqual(data["reward_weights"]["power"], 0.05)
 
 
 if __name__ == "__main__":
