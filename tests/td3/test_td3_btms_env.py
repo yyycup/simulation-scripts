@@ -3,11 +3,13 @@ import unittest
 from pathlib import Path
 
 import numpy as np
+from gymnasium.utils.env_checker import check_env
 
 from td3_btms.env import (
     BTMSTd3Env,
     build_current_profile,
     canonical_scene,
+    compute_reward,
     map_action_to_rpm,
     profile_sha256,
 )
@@ -81,6 +83,79 @@ class ActionAndResetTests(unittest.TestCase):
 
         np.testing.assert_array_equal(first, second)
         self.assertAlmostEqual(env.last_info["mean_soc"], 0.55)
+
+
+class RewardAndStepTests(unittest.TestCase):
+    def test_reward_penalizes_temperature_spread_and_high_temperature(self):
+        safe, _ = compute_reward(
+            mean_temp_c=25.0,
+            max_temp_c=26.0,
+            delta_temp_c=0.4,
+            total_power_w=0.0,
+        )
+        unsafe, unsafe_terms = compute_reward(
+            mean_temp_c=25.0,
+            max_temp_c=29.0,
+            delta_temp_c=1.0,
+            total_power_w=0.0,
+        )
+
+        self.assertEqual(safe, 0.0)
+        self.assertLess(unsafe, safe)
+        self.assertGreater(
+            unsafe_terms["delta_temperature_violation_cost"],
+            0.0,
+        )
+        self.assertGreater(
+            unsafe_terms["high_temperature_violation_cost"],
+            0.0,
+        )
+
+    def test_peak_environment_advances_real_physics(self):
+        env = BTMSTd3Env(scene="peak", current_profile=[560.0, 560.0])
+        before, _ = env.reset(seed=3)
+        after, reward, terminated, truncated, info = env.step(
+            np.array([0.0, 0.0])
+        )
+
+        self.assertEqual(after.shape, before.shape)
+        self.assertTrue(np.isfinite(reward))
+        self.assertFalse(terminated)
+        self.assertFalse(truncated)
+        self.assertEqual(info["step_index"], 1)
+        self.assertAlmostEqual(info["n_comp_cmd_rpm"], 3150.0)
+        self.assertAlmostEqual(info["n_pump_cmd_rpm"], 3200.0)
+        self.assertGreaterEqual(info["total_power_w"], 0.0)
+
+    def test_profile_end_truncates_the_episode(self):
+        env = BTMSTd3Env(scene="freq", current_profile=[0.0])
+        env.reset(seed=5)
+        _, _, terminated, truncated, info = env.step(
+            np.array([-1.0, -1.0])
+        )
+
+        self.assertFalse(terminated)
+        self.assertTrue(truncated)
+        self.assertEqual(info["end_reason"], "profile_complete")
+        with self.assertRaisesRegex(RuntimeError, "reset"):
+            env.step(np.array([-1.0, -1.0]))
+
+    def test_high_temperature_terminates_with_fixed_penalty(self):
+        env = BTMSTd3Env(scene="peak", current_profile=[560.0, 560.0])
+        env.reset(seed=9)
+        env.pack.temps[:] = 45.0 + 273.15
+        _, reward, terminated, truncated, info = env.step(
+            np.array([-1.0, -1.0])
+        )
+
+        self.assertTrue(terminated)
+        self.assertFalse(truncated)
+        self.assertEqual(info["end_reason"], "temperature_limit")
+        self.assertLessEqual(reward, -100.0)
+
+    def test_gymnasium_contract(self):
+        env = BTMSTd3Env(scene="peak", current_profile=[560.0] * 8)
+        check_env(env, skip_render_check=True)
 
 
 if __name__ == "__main__":

@@ -17,6 +17,7 @@ from pack import BatteryPack
 from thermal_batch_config import (
     AGC_DATA_FILE,
     AMBIENT_TEMP_C,
+    AMBIENT_TEMP_K,
     INITIAL_SOC_PEAK,
     INITIAL_SOC_REG,
     INITIAL_TEMP_C,
@@ -27,10 +28,22 @@ from thermal_batch_config import (
     PLATE_NODE_HEAT_CAPACITY_TOTAL,
     SIM_DT,
 )
-from thermal_loop import build_pack_config, initialize_refrigeration_dynamic_state
+from thermal_loop import (
+    build_pack_config,
+    initialize_refrigeration_dynamic_state,
+    simulate_thermal_loop_step,
+)
 
 
 DEFAULT_DURATION_S = {"peak": 6400.0, "freq": 3600.0}
+REWARD_WEIGHTS = {
+    "temperature_tracking": 1.0,
+    "power": 0.05,
+    "delta_temperature": 4.0,
+    "high_temperature": 4.0,
+}
+TERMINATION_TEMP_C = 45.0
+TERMINATION_PENALTY = 100.0
 
 
 def canonical_scene(scene: str) -> str:
@@ -122,6 +135,37 @@ def map_action_to_rpm(action) -> tuple[float, float]:
     return float(n_comp), float(n_pump)
 
 
+def compute_reward(
+    *,
+    mean_temp_c: float,
+    max_temp_c: float,
+    delta_temp_c: float,
+    total_power_w: float,
+) -> tuple[float, dict[str, float]]:
+    terms = {
+        "temperature_tracking_cost": ((float(mean_temp_c) - 25.0) / 2.0) ** 2,
+        "power_cost": float(total_power_w) / 5000.0,
+        "delta_temperature_violation_cost": (
+            max(0.0, float(delta_temp_c) - 0.5) / 0.5
+        )
+        ** 2,
+        "high_temperature_violation_cost": (
+            max(0.0, float(max_temp_c) - 27.0) / 2.0
+        )
+        ** 2,
+    }
+    reward = -(
+        REWARD_WEIGHTS["temperature_tracking"]
+        * terms["temperature_tracking_cost"]
+        + REWARD_WEIGHTS["power"] * terms["power_cost"]
+        + REWARD_WEIGHTS["delta_temperature"]
+        * terms["delta_temperature_violation_cost"]
+        + REWARD_WEIGHTS["high_temperature"]
+        * terms["high_temperature_violation_cost"]
+    )
+    return float(reward), terms
+
+
 class BTMSTd3Env(gym.Env):
     metadata = {"render_modes": []}
 
@@ -150,9 +194,10 @@ class BTMSTd3Env(gym.Env):
             max_steps=max_steps,
         )
         self.action_space = spaces.Box(-1.0, 1.0, shape=(2,), dtype=np.float32)
+        float_limit = np.finfo(np.float32).max
         self.observation_space = spaces.Box(
-            low=-np.inf,
-            high=np.inf,
+            low=-float_limit,
+            high=float_limit,
             shape=(9,),
             dtype=np.float32,
         )
@@ -226,3 +271,118 @@ class BTMSTd3Env(gym.Env):
         metrics = self._metrics()
         self.last_info = {"scene": self.scene, "step_index": 0, **metrics}
         return self._observation(metrics), dict(self.last_info)
+
+    def step(self, action):
+        if self.pack is None or self._done:
+            raise RuntimeError(
+                "call reset() before step() or after episode completion"
+            )
+
+        n_comp_cmd, n_pump_cmd = map_action_to_rpm(action)
+        initial_metrics = self._metrics()
+        if initial_metrics["max_temp_c"] >= TERMINATION_TEMP_C:
+            reward, reward_terms = compute_reward(
+                mean_temp_c=initial_metrics["mean_temp_c"],
+                max_temp_c=initial_metrics["max_temp_c"],
+                delta_temp_c=initial_metrics["delta_temp_c"],
+                total_power_w=0.0,
+            )
+            reward -= TERMINATION_PENALTY
+            self._done = True
+            info = {
+                "scene": self.scene,
+                "step_index": self.step_index,
+                "time_s": self.step_index * self.dt,
+                **initial_metrics,
+                "n_comp_cmd_rpm": n_comp_cmd,
+                "n_pump_cmd_rpm": n_pump_cmd,
+                "total_power_w": 0.0,
+                "reward": reward,
+                "end_reason": "temperature_limit",
+                **reward_terms,
+            }
+            self.last_info = info
+            return self._observation(initial_metrics), reward, True, False, dict(info)
+
+        step_current = float(self.current_profile[self.step_index])
+        self.pack.total_current = step_current
+        thermal = simulate_thermal_loop_step(
+            pack=self.pack,
+            T_tank_K=self.t_tank_k,
+            T_plate_K_array=self.t_plate_k,
+            N_comp_cmd=n_comp_cmd,
+            N_pump_cmd=n_pump_cmd,
+            T_outdoor=AMBIENT_TEMP_K,
+            dt=self.dt,
+            is_reversed=False,
+            C_plate_node=self.c_plate_node,
+            compressor_power_scale=1.0,
+            dynamic_state=self.dynamic_state,
+        )
+        self.t_tank_k = float(thermal["T_tank_K"])
+        self.t_plate_k = np.asarray(thermal["T_plate_K_array"], dtype=float)
+        self.dynamic_state = thermal["dynamic_state"]
+        self.pack.step(
+            self.dt,
+            T_plate=self.t_plate_k,
+            T_cabinet=AMBIENT_TEMP_K,
+        )
+        self.pack.history = [[] for _ in range(self.pack.Ns)]
+        self.pack.branch_currents_history = [[] for _ in range(self.pack.rows)]
+        self.step_index += 1
+
+        metrics = self._metrics()
+        total_power_w = float(
+            thermal["W_comp_real"]
+            + thermal["W_pump_val"]
+            + thermal["W_fan_real"]
+        )
+        reward, reward_terms = compute_reward(
+            mean_temp_c=metrics["mean_temp_c"],
+            max_temp_c=metrics["max_temp_c"],
+            delta_temp_c=metrics["delta_temp_c"],
+            total_power_w=total_power_w,
+        )
+        finite_values = np.asarray(
+            [*metrics.values(), total_power_w, reward],
+            dtype=float,
+        )
+        finite_state = bool(np.all(np.isfinite(finite_values)))
+        terminated = not finite_state
+        end_reason = "nonfinite_state" if terminated else None
+        if terminated:
+            reward = -TERMINATION_PENALTY
+        elif metrics["max_temp_c"] >= TERMINATION_TEMP_C:
+            terminated = True
+            reward -= TERMINATION_PENALTY
+            end_reason = "temperature_limit"
+
+        truncated = not terminated and self.step_index >= len(self.current_profile)
+        if truncated and end_reason is None:
+            end_reason = "profile_complete"
+        self._done = bool(terminated or truncated)
+
+        info = {
+            "scene": self.scene,
+            "step_index": self.step_index,
+            "time_s": self.step_index * self.dt,
+            **metrics,
+            "current_a": step_current,
+            "n_comp_cmd_rpm": n_comp_cmd,
+            "n_pump_cmd_rpm": n_pump_cmd,
+            "total_power_w": total_power_w,
+            "reward": reward,
+            "end_reason": end_reason,
+            **reward_terms,
+        }
+        observation = self._observation(metrics)
+        if not finite_state:
+            observation = np.nan_to_num(
+                observation,
+                nan=0.0,
+                posinf=0.0,
+                neginf=0.0,
+            )
+            info["terminal_observation_replaced"] = True
+        self.last_info = info
+        return observation, reward, terminated, truncated, dict(info)
