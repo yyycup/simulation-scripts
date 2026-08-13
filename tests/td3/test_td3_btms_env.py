@@ -1,6 +1,8 @@
 import json
 import tempfile
 import unittest
+from contextlib import redirect_stderr
+from io import StringIO
 from pathlib import Path
 from unittest import mock
 
@@ -20,6 +22,7 @@ from run_td3_training import (
     HISTORY_COLUMNS,
     PilotTrainingCallback,
     create_run_directory,
+    parse_args as parse_training_args,
     plot_training_history,
     write_metadata,
     write_training_history,
@@ -305,6 +308,36 @@ class PilotTrainingCallbackTests(unittest.TestCase):
                     pd.DataFrame(columns=HISTORY_COLUMNS),
                     Path(temp_dir) / "empty.png",
                 )
+
+
+class PilotTrainingCliTests(unittest.TestCase):
+    def test_formal_training_defaults_to_100_step_checkpoints(self):
+        args = parse_training_args(
+            ["--scene", "peak", "--total-timesteps", "500"]
+        )
+
+        self.assertEqual(args.checkpoint_interval, 100)
+        self.assertFalse(args.no_training_plot)
+
+    def test_smoke_defaults_to_disabled_checkpoints(self):
+        args = parse_training_args(["--scene", "peak", "--smoke"])
+
+        self.assertEqual(args.checkpoint_interval, 0)
+
+    def test_checkpoint_interval_rejects_negative_values(self):
+        stderr = StringIO()
+        with redirect_stderr(stderr), self.assertRaises(SystemExit):
+            parse_training_args(
+                [
+                    "--scene",
+                    "peak",
+                    "--total-timesteps",
+                    "500",
+                    "--checkpoint-interval",
+                    "-1",
+                ]
+            )
+        self.assertIn("must be nonnegative", stderr.getvalue())
 
 
 class EvaluationEntrypointTests(unittest.TestCase):

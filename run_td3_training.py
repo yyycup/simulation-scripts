@@ -190,6 +190,8 @@ def write_metadata(
     dt,
     profile,
     agc_data_file,
+    checkpoint_interval=0,
+    training_history_rows=0,
 ):
     data = {
         "scene": scene,
@@ -207,6 +209,8 @@ def write_metadata(
             else str(Path(agc_data_file).resolve())
         ),
         "profile_sha256": profile_sha256(profile),
+        "checkpoint_interval": int(checkpoint_interval),
+        "training_history_rows": int(training_history_rows),
     }
     Path(path).write_text(
         json.dumps(data, ensure_ascii=False, indent=2, allow_nan=False) + "\n",
@@ -253,6 +257,8 @@ def parse_args(argv=None):
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--agc-data-file", type=Path)
     parser.add_argument("--smoke", action="store_true")
+    parser.add_argument("--checkpoint-interval", type=int)
+    parser.add_argument("--no-training-plot", action="store_true")
     args = parser.parse_args(argv)
     if not args.smoke and (
         args.total_timesteps is None or args.total_timesteps < 1
@@ -260,6 +266,10 @@ def parse_args(argv=None):
         parser.error("formal training requires positive --total-timesteps")
     if args.total_timesteps is not None and args.total_timesteps < 1:
         parser.error("--total-timesteps must be positive")
+    if args.checkpoint_interval is None:
+        args.checkpoint_interval = 0 if args.smoke else 100
+    if args.checkpoint_interval < 0:
+        parser.error("--checkpoint-interval must be nonnegative")
     return args
 
 
@@ -274,6 +284,10 @@ def main(argv=None):
         or Path("outputs") / "td3" / args.scene / timestamp
     )
     run_dir = create_run_directory(requested)
+    callback = PilotTrainingCallback(
+        checkpoint_dir=run_dir / "checkpoints",
+        checkpoint_interval=args.checkpoint_interval,
+    )
     profile = smoke_profile(args.scene) if args.smoke else None
     env = BTMSTd3Env(
         args.scene,
@@ -282,7 +296,7 @@ def main(argv=None):
     )
     try:
         model = build_model(env, seed=args.seed, smoke=args.smoke)
-        model.learn(total_timesteps=total_timesteps)
+        model.learn(total_timesteps=total_timesteps, callback=callback)
         model.save(run_dir / "model")
         write_metadata(
             run_dir / "metadata.json",
@@ -292,8 +306,16 @@ def main(argv=None):
             dt=SIM_DT,
             profile=env.current_profile,
             agc_data_file=env.agc_data_file,
+            checkpoint_interval=args.checkpoint_interval,
+            training_history_rows=len(callback.records),
         )
     finally:
+        history = write_training_history(
+            callback.records,
+            run_dir / "training_history.csv",
+        )
+        if not args.no_training_plot and not history.empty:
+            plot_training_history(history, run_dir / "training_curve.png")
         env.close()
     print(run_dir)
     return 0
