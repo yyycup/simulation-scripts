@@ -2,6 +2,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import numpy as np
 import pandas as pd
@@ -19,7 +20,9 @@ from run_td3_training import (
     HISTORY_COLUMNS,
     PilotTrainingCallback,
     create_run_directory,
+    plot_training_history,
     write_metadata,
+    write_training_history,
 )
 from run_td3_evaluation import summarize_trajectory
 
@@ -247,6 +250,61 @@ class PilotTrainingCallbackTests(unittest.TestCase):
 
         with self.assertRaisesRegex(RuntimeError, "one environment"):
             callback._on_step()
+
+    def test_callback_saves_zero_padded_checkpoints(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            callback = PilotTrainingCallback(
+                checkpoint_dir=Path(temp_dir),
+                checkpoint_interval=100,
+            )
+            callback.num_timesteps = 100
+            callback.locals = {
+                "infos": [self._info()],
+                "rewards": np.array([-0.25]),
+                "dones": np.array([False]),
+            }
+            callback.model = mock.Mock()
+
+            callback._on_step()
+
+            callback.model.save.assert_called_once_with(
+                Path(temp_dir).resolve() / "checkpoint_000100_steps"
+            )
+
+    def test_history_writer_and_plot_create_nonempty_artifacts(self):
+        records = []
+        for training_step in range(1, 4):
+            row = {
+                "training_step": training_step,
+                "episode_index": 0,
+                "episode_step": training_step,
+                "reward": -0.1 * training_step,
+                **self._info(),
+                "terminated": False,
+                "truncated": training_step == 3,
+            }
+            row.pop("step_index")
+            records.append(row)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            csv_path = Path(temp_dir) / "training_history.csv"
+            plot_path = Path(temp_dir) / "training_curve.png"
+
+            frame = write_training_history(records, csv_path)
+            plot_training_history(frame, plot_path)
+
+            self.assertEqual(tuple(frame.columns), HISTORY_COLUMNS)
+            self.assertEqual(len(pd.read_csv(csv_path)), 3)
+            self.assertGreater(csv_path.stat().st_size, 0)
+            self.assertGreater(plot_path.stat().st_size, 0)
+
+    def test_empty_history_cannot_be_plotted(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with self.assertRaisesRegex(ValueError, "empty"):
+                plot_training_history(
+                    pd.DataFrame(columns=HISTORY_COLUMNS),
+                    Path(temp_dir) / "empty.png",
+                )
 
 
 class EvaluationEntrypointTests(unittest.TestCase):

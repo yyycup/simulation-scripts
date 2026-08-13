@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 from stable_baselines3 import TD3
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.noise import NormalActionNoise
@@ -51,6 +52,10 @@ class PilotTrainingCallback(BaseCallback):
         self.checkpoint_interval = int(checkpoint_interval)
         if self.checkpoint_interval < 0:
             raise ValueError("checkpoint_interval must be nonnegative")
+        if self.checkpoint_interval > 0 and self.checkpoint_dir is None:
+            raise ValueError(
+                "checkpoint_dir is required when checkpoints are enabled"
+            )
         self.records = []
         self.episode_index = 0
 
@@ -87,9 +92,82 @@ class PilotTrainingCallback(BaseCallback):
                 "truncated": bool(end_reason == "profile_complete"),
             }
         )
+        if (
+            self.checkpoint_interval > 0
+            and self.num_timesteps % self.checkpoint_interval == 0
+        ):
+            self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
+            checkpoint = self.checkpoint_dir / (
+                f"checkpoint_{self.num_timesteps:06d}_steps"
+            )
+            self.model.save(checkpoint)
         if dones[0]:
             self.episode_index += 1
         return True
+
+
+def write_training_history(records, path) -> pd.DataFrame:
+    frame = pd.DataFrame(records, columns=HISTORY_COLUMNS)
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    frame.to_csv(path, index=False, encoding="utf-8-sig")
+    return frame
+
+
+def plot_training_history(frame: pd.DataFrame, path) -> None:
+    if frame.empty:
+        raise ValueError("training history is empty")
+
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    steps = frame["training_step"]
+    reward_mean = frame["reward"].rolling(50, min_periods=1).mean()
+    figure, axes = plt.subplots(4, 1, figsize=(12, 14), sharex=True)
+
+    axes[0].plot(steps, frame["reward"], alpha=0.35, label="step reward")
+    axes[0].plot(steps, reward_mean, linewidth=2.0, label="50-step mean")
+    axes[0].set_ylabel("Reward")
+    axes[0].legend()
+    axes[0].grid(alpha=0.25)
+
+    axes[1].plot(steps, frame["mean_temp_c"], label="mean temperature")
+    axes[1].plot(steps, frame["max_temp_c"], label="max temperature")
+    axes[1].plot(steps, frame["delta_temp_c"], label="max delta T")
+    axes[1].axhline(25.0, color="black", linestyle="--", label="target 25 C")
+    axes[1].axhline(0.5, color="red", linestyle=":", label="delta T limit")
+    axes[1].set_ylabel("Temperature (C)")
+    axes[1].legend(ncol=2)
+    axes[1].grid(alpha=0.25)
+
+    axes[2].plot(steps, frame["total_power_w"] / 1000.0)
+    axes[2].set_ylabel("Power (kW)")
+    axes[2].grid(alpha=0.25)
+
+    axes[3].plot(
+        steps,
+        frame["n_comp_cmd_rpm"],
+        label="compressor command",
+    )
+    axes[3].plot(
+        steps,
+        frame["n_comp_eff_rpm"],
+        label="compressor actual",
+    )
+    axes[3].plot(steps, frame["n_pump_cmd_rpm"], label="pump command")
+    axes[3].plot(steps, frame["n_pump_eff_rpm"], label="pump actual")
+    axes[3].set_ylabel("Speed (rpm)")
+    axes[3].set_xlabel("Training step")
+    axes[3].legend(ncol=2)
+    axes[3].grid(alpha=0.25)
+
+    figure.tight_layout()
+    figure.savefig(path, dpi=160)
+    plt.close(figure)
 
 
 def create_run_directory(path) -> Path:
