@@ -7,6 +7,7 @@ from pathlib import Path
 
 import numpy as np
 from stable_baselines3 import TD3
+from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.noise import NormalActionNoise
 
 from td3_btms.env import BTMSTd3Env, REWARD_WEIGHTS, profile_sha256
@@ -17,6 +18,78 @@ from thermal_batch_config import (
     N_PUMP_MIN_RPM,
     SIM_DT,
 )
+
+
+HISTORY_COLUMNS = (
+    "training_step",
+    "episode_index",
+    "episode_step",
+    "reward",
+    "current_a",
+    "mean_soc",
+    "mean_temp_c",
+    "max_temp_c",
+    "delta_temp_c",
+    "tank_temp_c",
+    "plate_mean_temp_c",
+    "total_power_w",
+    "n_comp_cmd_rpm",
+    "n_pump_cmd_rpm",
+    "n_comp_eff_rpm",
+    "n_pump_eff_rpm",
+    "terminated",
+    "truncated",
+)
+
+
+class PilotTrainingCallback(BaseCallback):
+    def __init__(self, *, checkpoint_dir, checkpoint_interval: int):
+        super().__init__()
+        self.checkpoint_dir = (
+            None if checkpoint_dir is None else Path(checkpoint_dir).resolve()
+        )
+        self.checkpoint_interval = int(checkpoint_interval)
+        if self.checkpoint_interval < 0:
+            raise ValueError("checkpoint_interval must be nonnegative")
+        self.records = []
+        self.episode_index = 0
+
+    def _on_step(self) -> bool:
+        infos = self.locals["infos"]
+        rewards = np.asarray(self.locals["rewards"], dtype=float)
+        dones = np.asarray(self.locals["dones"], dtype=bool)
+        if len(infos) != 1 or rewards.size != 1 or dones.size != 1:
+            raise RuntimeError("pilot logging supports exactly one environment")
+
+        info = infos[0]
+        end_reason = info.get("end_reason")
+        self.records.append(
+            {
+                "training_step": int(self.num_timesteps),
+                "episode_index": int(self.episode_index),
+                "episode_step": int(info["step_index"]),
+                "reward": float(rewards[0]),
+                "current_a": float(info["current_a"]),
+                "mean_soc": float(info["mean_soc"]),
+                "mean_temp_c": float(info["mean_temp_c"]),
+                "max_temp_c": float(info["max_temp_c"]),
+                "delta_temp_c": float(info["delta_temp_c"]),
+                "tank_temp_c": float(info["tank_temp_c"]),
+                "plate_mean_temp_c": float(info["plate_mean_temp_c"]),
+                "total_power_w": float(info["total_power_w"]),
+                "n_comp_cmd_rpm": float(info["n_comp_cmd_rpm"]),
+                "n_pump_cmd_rpm": float(info["n_pump_cmd_rpm"]),
+                "n_comp_eff_rpm": float(info["n_comp_eff_rpm"]),
+                "n_pump_eff_rpm": float(info["n_pump_eff_rpm"]),
+                "terminated": bool(
+                    end_reason in {"nonfinite_state", "temperature_limit"}
+                ),
+                "truncated": bool(end_reason == "profile_complete"),
+            }
+        )
+        if dones[0]:
+            self.episode_index += 1
+        return True
 
 
 def create_run_directory(path) -> Path:

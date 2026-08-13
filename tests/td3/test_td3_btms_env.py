@@ -15,7 +15,12 @@ from td3_btms.env import (
     map_action_to_rpm,
     profile_sha256,
 )
-from run_td3_training import create_run_directory, write_metadata
+from run_td3_training import (
+    HISTORY_COLUMNS,
+    PilotTrainingCallback,
+    create_run_directory,
+    write_metadata,
+)
 from run_td3_evaluation import summarize_trajectory
 
 
@@ -188,6 +193,60 @@ class TrainingEntrypointTests(unittest.TestCase):
             self.assertEqual(data["scene"], "peak")
             self.assertEqual(data["profile_sha256"], profile_sha256(profile))
             self.assertEqual(data["reward_weights"]["power"], 0.05)
+
+
+class PilotTrainingCallbackTests(unittest.TestCase):
+    def _info(self):
+        return {
+            "step_index": 3,
+            "current_a": 560.0,
+            "mean_soc": 0.94,
+            "mean_temp_c": 25.2,
+            "max_temp_c": 25.3,
+            "delta_temp_c": 0.1,
+            "tank_temp_c": 34.0,
+            "plate_mean_temp_c": 33.0,
+            "total_power_w": 1200.0,
+            "n_comp_cmd_rpm": 3000.0,
+            "n_pump_cmd_rpm": 2800.0,
+            "n_comp_eff_rpm": 2500.0,
+            "n_pump_eff_rpm": 2600.0,
+        }
+
+    def test_callback_records_fixed_schema_for_one_environment(self):
+        callback = PilotTrainingCallback(
+            checkpoint_dir=None,
+            checkpoint_interval=0,
+        )
+        callback.num_timesteps = 12
+        callback.locals = {
+            "infos": [self._info()],
+            "rewards": np.array([-0.25]),
+            "dones": np.array([False]),
+        }
+
+        self.assertTrue(callback._on_step())
+        self.assertEqual(tuple(callback.records[0]), HISTORY_COLUMNS)
+        self.assertEqual(callback.records[0]["training_step"], 12)
+        self.assertEqual(callback.records[0]["episode_index"], 0)
+        self.assertEqual(callback.records[0]["episode_step"], 3)
+        self.assertEqual(callback.records[0]["reward"], -0.25)
+        self.assertFalse(callback.records[0]["terminated"])
+        self.assertFalse(callback.records[0]["truncated"])
+
+    def test_callback_rejects_multiple_environments(self):
+        callback = PilotTrainingCallback(
+            checkpoint_dir=None,
+            checkpoint_interval=0,
+        )
+        callback.locals = {
+            "infos": [self._info(), self._info()],
+            "rewards": np.array([-0.1, -0.2]),
+            "dones": np.array([False, False]),
+        }
+
+        with self.assertRaisesRegex(RuntimeError, "one environment"):
+            callback._on_step()
 
 
 class EvaluationEntrypointTests(unittest.TestCase):
