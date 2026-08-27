@@ -96,3 +96,4 @@ simulink-agentic-toolkit-main/
 !model_data/
 !model_data/*.json
 !model_data/*.csv
+!single_pack_plant/model_data/*.csv
