@@ -1,0 +1,6 @@
+C:\Users\24776\miniforge3\envs\btms\Lib\site-packages\do_mpc\sysid\__init__.py:15: UserWarning: The ONNX feature is not available. Please install the full version of do-mpc to access this feature.
+  warnings.warn('The ONNX feature is not available. Please install the full version of do-mpc to access this feature.')
+C:\Users\24776\miniforge3\envs\btms\Lib\site-packages\do_mpc\opcua\__init__.py:14: UserWarning: The opcua feature is not available. Please install the full version of do-mpc to access this feature.
+  warnings.warn('The opcua feature is not available. Please install the full version of do-mpc to access this feature.')
+C:\Users\24776\miniforge3\envs\btms\Lib\site-packages\do_mpc\approximateMPC\__init__.py:13: UserWarning: The approximateMPC feature requires PyTorch, which is not installed by default. Please install the full version of do-mpc to use this feature: pip install do_mpc[full]
+  warnings.warn('The approximateMPC feature requires PyTorch, which is not installed by default. Please install the full version of do-mpc to use this feature: pip install do_mpc[full]')

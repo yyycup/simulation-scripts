@@ -97,3 +97,11 @@ simulink-agentic-toolkit-main/
 !model_data/*.json
 !model_data/*.csv
 !single_pack_plant/model_data/*.csv
+
+# Agent state (WorkBuddy memory / tmp) never enters the repo
+.workbuddy/
+
+# cluster_plant_v2: version the small real-data anchor CSVs (calibration evidence),
+# while *.csv above still keeps the bulky experiment outputs out.
+!cluster_plant_v2/model_data/*.csv
+!cluster_plant_v2/model_data/real_data_anchors/*.csv

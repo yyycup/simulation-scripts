@@ -1,0 +1,11 @@
+{
+  "baseline": "Cluster Plant V2.1 / Cluster-Sized Baseline",
+  "dt_s": 5.0,
+  "tank_l": 3.0,
+  "pump_rpm": 3600.0,
+  "branch_delta_p_pa": 20000.0,
+  "all_cases_pass": true,
+  "t3_560a_thermal_balance_available": true,
+  "t4_1120a_expected_thermal_deficit_w": 11126.552478459584,
+  "formal_acceptance_pass": true
+}

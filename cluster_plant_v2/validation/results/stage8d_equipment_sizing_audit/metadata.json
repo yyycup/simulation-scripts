@@ -1,0 +1,15 @@
+{
+  "duration_s": 600.0,
+  "dt_s": 5.0,
+  "load_cases_a": [
+    560.0,
+    1120.0
+  ],
+  "frozen_plant_modified": false,
+  "cluster_predictor_modified": false,
+  "screening_caveats": [
+    "S1 scales extensive cycle outputs only; it is not a final physical model.",
+    "S3 above 33.6 L/min extrapolates the current pump affinity law beyond 4800 rpm.",
+    "S4 changes only the imported cold-plate reference-flow constant at runtime."
+  ]
+}

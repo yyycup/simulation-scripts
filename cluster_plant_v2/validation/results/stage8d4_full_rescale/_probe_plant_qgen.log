@@ -1,0 +1,15 @@
+step 320/1280
+step 640/1280
+step 960/1280
+step 1280/1280
+time_min  qgen_per_pack_W  preview_W  ratio  temp_C  q_evap_W
+   0.1             828        970   0.85  25.02    18009
+  13.4            1022       1029   0.99  20.09    13612
+  26.8            1134       1071   1.06  16.03    11457
+  40.1            1205       1114   1.08  13.95     8687
+  53.4            1262       1161   1.09  13.21     7520
+  66.8            1328       1209   1.10  13.12     7348
+  80.1            1424       1293   1.10  13.26     7552
+  93.4            1604       1451   1.11  13.55     8363
+late segment (>90 min): per-pack q_gen mean 1741 W, preview 1570 W, ratio 1.109
+saved C:\Users\24776\PycharmProjects\PythonProject\集成仿真多种控制\cluster_plant_v2\validation\results\stage8d4_full_rescale\_probe_plant_qgen_vs_preview.csv

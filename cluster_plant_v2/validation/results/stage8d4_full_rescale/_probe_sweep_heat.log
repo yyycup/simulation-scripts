@@ -1,0 +1,14 @@
+sweep 1000 rpm done, qgen 1036 W/pack
+sweep 1300 rpm done, qgen 1103 W/pack
+sweep 1600 rpm done, qgen 1187 W/pack
+sweep 1900 rpm done, qgen 1312 W/pack
+sweep 2200 rpm done, qgen 1639 W/pack
+sweep 2500 rpm done, qgen 1929 W/pack
+cmd   q_evap   tank   supply  bat    qgen_pp
+ 1000     4695  23.23  21.68  25.38    1036
+ 1300     5963  22.57  20.62  25.22    1103
+ 1600     7042  21.32  19.03  24.41    1187
+ 1900     7946  19.75  17.15  23.22    1312
+ 2200     8784  18.34  15.46  22.23    1639
+ 2500     9823  17.93  14.70  22.31    1929
+saved C:\Users\24776\PycharmProjects\PythonProject\集成仿真多种控制\cluster_plant_v2\validation\results\stage8d4_full_rescale\_probe_sweep_heat_anchors.csv

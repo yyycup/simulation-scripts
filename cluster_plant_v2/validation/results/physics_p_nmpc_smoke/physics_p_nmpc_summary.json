@@ -1,0 +1,80 @@
+[
+  {
+    "case_id": "S0_constant",
+    "controller": "baseline_fixed",
+    "final_battery_avg_temp_c": 25.05775936510736,
+    "max_battery_temp_c": 25.075697050242468,
+    "mean_band_error_k": 0.0,
+    "max_band_error_k": 0.0,
+    "time_outside_band_s": 0.0,
+    "compressor_energy_kwh": 0.007377177922512731,
+    "pump_energy_kwh": 0.00016644224250000005,
+    "compressor_movement_rpm": 0.0,
+    "pump_movement_rpm": 0.0
+  },
+  {
+    "case_id": "S0_constant",
+    "controller": "physics_p_nmpc",
+    "final_battery_avg_temp_c": 25.05455103889028,
+    "max_battery_temp_c": 25.073187567347986,
+    "mean_band_error_k": 0.0,
+    "max_band_error_k": 0.0,
+    "time_outside_band_s": 0.0,
+    "compressor_energy_kwh": 0.005870430545669353,
+    "pump_energy_kwh": 0.00023796039353657716,
+    "compressor_movement_rpm": 1199.999978312464,
+    "pump_movement_rpm": 300.00000000000045
+  },
+  {
+    "case_id": "S1_step",
+    "controller": "baseline_fixed",
+    "final_battery_avg_temp_c": 24.989793296107848,
+    "max_battery_temp_c": 25.007712146161396,
+    "mean_band_error_k": 0.0,
+    "max_band_error_k": 0.0,
+    "time_outside_band_s": 0.0,
+    "compressor_energy_kwh": 0.007377177922512731,
+    "pump_energy_kwh": 0.00016644224250000005,
+    "compressor_movement_rpm": 0.0,
+    "pump_movement_rpm": 0.0
+  },
+  {
+    "case_id": "S1_step",
+    "controller": "physics_p_nmpc",
+    "final_battery_avg_temp_c": 24.988844934674603,
+    "max_battery_temp_c": 25.006887901621496,
+    "mean_band_error_k": 0.0,
+    "max_band_error_k": 0.0,
+    "time_outside_band_s": 0.0,
+    "compressor_energy_kwh": 0.003790944658511738,
+    "pump_energy_kwh": 0.00018902945654296875,
+    "compressor_movement_rpm": 1200.0,
+    "pump_movement_rpm": 300.0
+  },
+  {
+    "case_id": "T2_regd",
+    "controller": "baseline_fixed",
+    "final_battery_avg_temp_c": 24.960368766971214,
+    "max_battery_temp_c": 25.003141546202414,
+    "mean_band_error_k": 0.0,
+    "max_band_error_k": 0.0,
+    "time_outside_band_s": 0.0,
+    "compressor_energy_kwh": 0.007377177922512731,
+    "pump_energy_kwh": 0.00016644224250000005,
+    "compressor_movement_rpm": 0.0,
+    "pump_movement_rpm": 0.0
+  },
+  {
+    "case_id": "T2_regd",
+    "controller": "physics_p_nmpc",
+    "final_battery_avg_temp_c": 24.957176029624463,
+    "max_battery_temp_c": 25.003141546202414,
+    "mean_band_error_k": 0.0,
+    "max_band_error_k": 0.0,
+    "time_outside_band_s": 0.0,
+    "compressor_energy_kwh": 0.003779801422867394,
+    "pump_energy_kwh": 0.00023796039357421877,
+    "compressor_movement_rpm": 1200.0,
+    "pump_movement_rpm": 300.0
+  }
+]

@@ -1,0 +1,500 @@
+Specification of Liquid Cooled Battery Cabinet Model：JL-BC-5-768/280-L
+Page： 1 of 22
+Jilipow Co., Ltd.
+Specification of liquid cooled battery cabinet
+Prepared by Checked by Approved by
+Model:JL-BC-5-768/280-L
+Customer
+Confirmation
+Customer Name:
+Customer No：
+Customer Approval：
+Comment：
+Tel：+86 18026626446
+Email: Frank@jilipow.com
+Add：3/F, Building 2, Leaguer Zhongkai Innovation Park, Huizhou, China
+Specification of Liquid Cooled Battery Cabinet Model：JL-BC-5-768/280-L
+Page： 2 of 22
+History of Specification
+Date Contents Remarks
+2024-4-15 First Issue A0
+Specification of Liquid Cooled Battery Cabinet Model：JL-BC-5-768/280-L
+Page： 3 of 22
+Contents
+1. Product Overview ......................................................................................................................... 4
+2. Application Instructions ........................................................................................................... 4
+3. Product Specification ....................................................................................................................6
+4. Products Description .................................................................................................................... 7
+4.1. Working principle diagram of the battery cabinet .................................................................. 7
+4.2. Battery cabinet dimensions ................................................................................................. 8
+4.3. Battery cabinet system layout ............................................................................................. 9
+4.4. Battery box ...................................................................................................................... 11
+4.5. High voltage box ............................................................................................................12
+4.5.1. Product function ....................................................................................................... 12
+4.5.2. Port Definition Explanation ..................................................................................13
+4.6. PCS ...................................................................................................................................15
+4.6.1. PCS Module appearance .........................................................................................15
+4.6.2. PCS technical specifications ................................................................................. 16
+4.7. Liquid cooling unit ............................................................................................................. 17
+4.7.1. Working principle of liquid cooling unit ..................................................................... 17
+4.7.2. Technical parameters of liquid cooling unit .............................................................. 17
+4.8. Fire fighting system ........................................................................................................... 18
+4.8.1. Working principle of fire fighting system ...................................................................18
+4.8.2. Fire protection system functions .............................................................................. 18
+4.9. Auxiliary electrical system ................................................................................................. 18
+4.9.1. Operation mode description.........................................................................................18
+4.10. EMS ................................................................................................................................ 19
+4.10.1. Product description.................................................................................................. 19
+4.10.2. Module appearance.................................................................................................. 19
+5. product Certification .................................................................................................................... 20
+6. Product Instructions .....................................................................................................................21
+7. Product Maintenance and Upkeep ............................................................................................. 21
+Specification of Liquid Cooled Battery Cabinet Model：JL-BC-5-768/280-L
+Page： 4 of 22
+1. Product Overview
+The definition of product model is shown as follows
+BC -- 5 -- 768/280 -- L
+2. Application Instructions
+The purpose of this document is to describe the specifications of the Liquid-cooled battery cabinets,and provide
+customers with information on the use of the product.The supply scope of this product is battery cabinet packs.Battery
+cabinet base mounting fastening screws, external power outlets, external communication outlets, and low voltage
+power supply cables are not included.The details are as follows:
+Table 1 Components of battery pack
+No. Component Model Quantity
+1 Battery packs BP-43- 153.6/280L 5EA
+2 High voltage packs BMS inside 1EA
+3 PCS PWS1- 125M 1EA
+4 EMS Energy storage integrated centralized control unit ES-CCU 1EA
+5 Fire fighting system Perfluorohexanone, smoke detector 1EA
+6 Liquid Cooling System Energy Storage Thermal Management System Includes
+liquid-cooled units, liquid-cooled lines, and coolant. 1EA
+7 Cabinet SGCC+Q345_ 1300mm×1300mm×2300mm_spray
+RAL 7035Light gray 1EA
+8 In-cabinet low voltage wiring
+harness
+Contains low voltage and communication wiring harness,
+already connected to the device at the factory 1EA
+Nominal capacity
+Nominal voltage
+Battery packs quantity
+Battery cabinet
+Liquid cooling
+Specification of Liquid Cooled Battery Cabinet Model：JL-BC-5-768/280-L
+Page： 5 of 22
+9 In-cabinet high voltage wiring
+harness
+Contains the connecting cables between PCS and high
+voltage box, battery and high-voltage box, and battery pack,
+which are already connected to the device at the factory.
+1EA
+10 Dynamic Ring Inspection System Includes temperature and humidity, flood sensor,
+dehumidifier, travel switch, etc.
+1EA
+11 Auxiliary electrical system Including UPS, micro circuit breaker, switching power supply,
+five-hole socket and other auxiliary electrical equipment
+1EA
+12 Accessory Special tools, special accessories, etc 1EA
+13 Test report Test report 1EA
+14 Product certificate Key components and complete machines 1EA
+15 Product packaging Film + paper packaging 1EA
+Note:The specific model,specification and quantity are subject to confirmation before delivery.
+Specification of Liquid Cooled Battery Cabinet Model：JL-BC-5-768/280-L
+Page： 6 of 22
+3. Product Specification
+Table 2 Parameters of liquid-cooled battery cabinet
+Item Specification
+DC side
+Cell type LFP3.2V/280Ah
+Battery pack configuration 1P48S/43kwh
+Battery system configuration 1P240S
+Battery voltage range DC672V~ DC864V
+Battery capacity range 215kwh
+Discharge rate ≤0.5P
+AC side
+PCS power 125KW
+PCS cooling method Air-cooled
+AC side voltage 380VAC, -15%~+10%
+AC wiring method three-phase four-wire
+Power factor -1 (ahead) ~ 1 (behind)
+Inlet method Ac bottom incoming cable
+System
+parameter
+Thermal management method Liquid-cooled,liquid-heated
+Fire fighting system Perfluorohexanone + smoke detector
+Protection class IP65
+Corrosion-proof grade C5H
+Allowable ambient temperature 0～ 55 °C (charge)
+-20 ～ 55° C (discharge)
+Allowable ambient humidity 0~95% RH (no condensation)
+Noise ≤70dB@1m
+Communication mode LAN/CAN/ RS485
+Overall dimensions (L * W * H) 1300mm × 1300mm ×2300mm
+Weight Approx. 2700kg
+Maximum working altitude 4000 meters(run at a reduced rate above 2,000 meters)
+System service life ≥10 years
+Specification of Liquid Cooled Battery Cabinet Model：JL-BC-5-768/280-L
+Page： 7 of 22
+4. Products Description
+The new generation of industrial and commercial integrated energy storage cabinet launched by JILIPOW Energy integrates
+the design concept of "all-in-one", integrating battery clusters (5 packs in series), BMS, PCS, EMS, fire and thermal
+management systems in a single standardized cabinet. It has the characteristics of small land area, high reliability, easy
+installation, flexible expansion, convenient operation and maintenance, and high system efficiency. It is suitable for
+micro-electric network, backup power supply, peak cutting and valley filling, distributed new energy consumption, optical
+storage and charge and other application requirements.
+4.1. Working principle diagram of the battery cabinet
+Figure 1 working principle diagram of the battery cabinet
+Working mode
+The all-in-one energy storage cabinet supports both on grid and off grid operation modes.
+(1) Grid-connected operation:In the grid-connected state, the AC side of the energy storage cabinet is connected to the
+power grid, and the DC side is connected to the lithium battery. The lithium battery can be charged and discharged at
+constant voltage, constant current or constant power according to the appropriate operation mode selected for different
+application scenarios.
+(2) Off-grid operation: In the off-grid state, the system can output a fixed frequency (matching the power grid)
+three-phase AC voltage to achieve continuous and stable power supply for the AC side load
+
+Specification of Liquid Cooled Battery Cabinet Model：JL-BC-5-768/280-L
+Page： 8 of 22
+4.2. Battery cabinet dimensions
+Figure 2 Battery cabinet dimensions
+Specification of Liquid Cooled Battery Cabinet Model：JL-BC-5-768/280-L
+Page： 9 of 22
+4.3. Battery cabinet system layout
+Battery Cluster Configuration: A single set of energy storage cabinet system comprises a total of 1 cluster, with 5
+battery boxes per cluster and 4 modules per box. Each individual battery box contains 48 battery cells and 2 BMU
+(Battery Management Units) that monitor the voltage and temperature of the battery cells within the box. The battery
+boxes are physically separated from the electrical compartment and are not located in the same enclosed space. As a
+result, faults within the cluster cannot trigger a chain reaction, and issues such as thermal runaway and electrical fires
+can be effectively isolated. This enhances the overall safety of the system.
+Fig u re 3 Layout of the battery cabinet system
+Specification of Liquid Cooled Battery Cabinet Model：JL-BC-5-768/280-L
+Page： 10 of 22
+Table 3 Batter cabinet system components
+No. Part name Remarks Content
+1 Liquid cooling unit
+It is used to adjust the temperature of the battery pack in the energy storage system
+to ensure that it always works within the appropriate temperature range to maintain
+the best working condition of the system. For details, please refer to "47 Liquid
+cooling Units ".
+2 PCS
+Bi-directional energy storage converter,realizes the electric energy conversion
+between the grid and the battery, and monitors and manages the exchange
+process.for details,please refer to “46 pcs”.
+3 Main incoming switch Circuit breaker at the inlet of the main circuit power supply.
+4
+Temperature and
+humidity sensor
+A sensor device for collecting and measuring environmental parameters such as
+temperature and humidity in the cabinet.
+5 Fire fighting system
+The fire signal in each battery pack/battery compartment is detected. According to
+the detected fire signal, the fire extinguishing agent perfluorohexanone is sprayed
+into the corresponding battery pack and the fire spot in the cabin and atomized to
+suppress and eliminate the fire. For details, see 4.8 Fire Extinguishing System.
+6
+Auxiliary electrical
+system
+A general term for power, control, and signal circuits outside the main loop.
+7 UPS
+The uninterruptible power supply(UPS) ensures that important devices in the
+auxiliary power system can work normally when the power supply is abnormal.
+Explode-discharging
+apparatus
+Ensure that even if there is a fire and explosion, the pressure generated is
+discharged through the explosion plate to avoid the accumulation of combustible
+gas and further detonation, and the energy storage cabinet will not disintegrate
+9 Smoke detector
+Detect the fire signal in the cabinet, including but not limited to smoke, temperature,
+gas (CO, H2, etc.) concentration.
+10 EMS
+Energy storage cabinet system component information access summary, local
+display, local monitoring and energy management unit, centralized monitoring and
+management of the energy storage system. For details, see "4.10EMS."
+11 Indicator light
+Signal indication equipment for displaying different states of operation and faults
+inside the energy storage cabinet.
+12 High voltage box
+The high-voltage power loop management unit is an intermediate unit connecting
+battery cluster and PCS. The high-voltage control box has the functions of battery
+cluster voltage and current collection, loop contactor control and protection. For
+details, see "4.5 High Pressure Box ".
+13 Battery PACK
+It is composed of 48 lithium iron phosphate cells, 2 BMUs (battery slave control
+unit) and box structure, which can store and release 43kwh of energy. For details,
+see "44 Battery Box ".
+14 Liquid cooling line A network of pipes that carries the coolant of a liquid-cooled unit.
+15 Power cable Connect the cable harness between PCS, high pressure box, and battery box.
+16 Flood sensors
+A sensor device that accurately distinguishes whether or not flooding has occurred
+by using an alternating current to collect inductive parameters of standing water.
+17 Dehumidifier
+By condensing the moisture in the air out of the cabinet,quickly reduce the humidity
+inside the cabinet,effectively lifting the condensation trouble,keep safe operation of
+the barrier equipment.
+Specification of Liquid Cooled Battery Cabinet Model：JL-BC-5-768/280-L
+Page： 11 of 22
+4.4. Battery box
+The liquid-cooled battery box consists of 48 LF280K cells grouped by 1P48S, and integrates BMU, fuse, and
+MSD components as shown in the following figure：
+Figure 5 Appearance of a liquid-cooled battery box
+The external interface of the liquid cooled battery box is shown in the following figure,and the fire
+interface is optional
+
+Specification of Liquid Cooled Battery Cabinet Model：JL-BC-5-768/280-L
+Page： 12 of 22
+Fire interface
+总 正
+MSD
+Explosion-proof
+valves
+Figure 6 Interface diagram of a liquid-cooled battery box
+4.5. High Voltage Box
+The high-voltage control box for energy storage batteries is a high-voltage power circuit management unit specially
+designed for energy storage systems. It is an intermediate unit that connects the battery cluster and PCS. The
+high-voltage control box has functions such as battery cluster voltage and current collection, battery cluster circuit
+contactor control, and protection. The built-in energy storage battery cluster control main control unit (BCMU) in the
+high-voltage control box has CAN, daisy chain, and 485 communication bus interfaces, which can achieve
+communication functions between the high-voltage control box, the energy storage battery management module, the
+energy storage battery management system host, and the energy storage high-voltage box, and achieve control,
+protection, and data communication functions of the energy storage battery cluster.
+4.5.1. Product function
+(1) The standard working voltage of the auxiliary power supply of the product is AC220V, which meets
+the needs of various energy storage occasions;
+(2) The product supports CAN communication between the battery management slave module and the
+main control module of the energy storage system, achieving the summary of battery cluster
+information and management to achieve information exchange;
+(3) Support communication control and dry contact control with energy storage inverters, and support
+CAN communication mode;
+(4) Support manual opening and closing control function for external DC circuit breakers;
+(5) Supports digital signal input detection, can detect switch status signals, etc;
+(6) Supports battery cluster terminal voltage detection, terminal current detection, and battery cluster
+总负
+communication
+Maintenance window
+Specification of Liquid Cooled Battery Cabinet Model：JL-BC-5-768/280-L
+Page： 13 of 22
+insulation status detection;
+(7) The product has accurate battery cluster terminal voltage detection, terminal current detection and
+battery cluster insulation status detection functions.
+(8) The product supports the environmental temperature detection in the high pressure box to ensure
+the safety of the system operation.
+(9) The operating status indicator is designed on the product panel to intuitively identify the current
+operating status.
+(10) The product is selected with high-reliability devices and adopts multiple redundant protection
+measures. Fully considering the possible harsh electromagnetic environment as well as high
+temperature, vibration and other environments in the energy storage system, the product has high
+reliability, high stability and high anti-interference performance.
+4.5.2. Port Definition Explanation
+Table 4 Definition of power interface of high pressure box
+Interface
+definition Function Description Model Remarks
+B+ Battery cluster input positive end SS1-W50Y-AF(orange)
+Circular Connector Socket - Connected to
+the Positive Terminal of the Battery
+Cluster
+B- Battery cluster input negative end SS1-W50Y-BF(black)
+Circular Connector Socket - Connected to
+the negative Terminal of the Battery
+Cluster
+PCS+ PCS input positive end SS1-W50Y-AF(orange) Circular Connector Socket - Connected to
+the Positive Terminal of the PCS
+PCS- PCS input negative end SS1-W50Y-BF(black) Circular Connector Socket - Connected to
+the negative Terminal of the PCS
+Figure 7 schematic diagram of high-voltage box panel
+Specification of Liquid Cooled Battery Cabinet Model：JL-BC-5-768/280-L
+Page： 14 of 22
+Table 5 Names of High-Voltage Box
+No. Name
+1 BMS Power input
+2 Debug diagnostic port
+3 Slave control power supply communication interface
+4 BMS communication interface
+5 PCS communication interface
+6 Liquid cooling communication interface
+7 Battery Compartment Communication Port
+8 Power connector positive (battery side)
+9 Power connector negative (battery side)
+10 Power indicator light
+11 Manual mechanism
+12 Power connector positive (PCS side)
+13 Power connector negative (PCS side)
+Specification of Liquid Cooled Battery Cabinet Model：JL-BC-5-768/280-L
+Page： 15 of 22
+4.6. PCS
+A bidirectional energy storage converter is a conversion device between the power grid and the battery, capable of
+charging and discharging the battery. It can invert the direct current (DC) from the battery into alternating current (AC)
+that can be merged into the power grid, and it can also rectify the AC from the power grid into DC that can be charged
+into the battery. The bidirectional energy storage converter can be used in both grid-connected mode and off-grid
+mode.
+This energy storage system employs a 125KWPCS power converter with a single-stage topology. The input range of
+the DC voltage is between 600 and 1000V.
+4.6.1. PCS Module appearance
+Figure 8 Bidirectional energy storage converter
+Table 6 Description of PCS interfaces
+No. Name Description
+1 Power wiring
+terminal
+Direct current positive (DC+)/negative (DC -)and alternating current A
+(L1)/B (L2)/C (L3)/N
+2 Multifunctional
+panel Communication and dry contact panel
+3 Handle Unbearable
+Specification of Liquid Cooled Battery Cabinet Model：JL-BC-5-768/280-L
+Page： 16 of 22
+4.6.2. PCS technical specifications
+Table 7 PCS Technical Parameters
+AC parameter
+Normal AC Power Output 125KVA
+Wiring method three-phase four-wire
+AC overload capacity 137.5KVA
+Allowable grid voltage 380/400 (- 15%~ 15%) vac
+Allowable grid frequency 50/60 (-2.5~2.5) HZ
+Total current harmonic distortion rate ≤3%
+Power factor 0.99/- 1~ 1
+DC parameter
+Maximum DC power 137.5kw
+DC voltage range 600~ 1000 (650~ 1000 full load) vdc
+Maximum DC Current 212A
+Stable voltage accuracy ≤±1%
+Stable current accuracy ≤±1%
+System parameter
+Maximum conversion efficiency 99%
+Dimensions (width × height × depth) 520×220×680mm
+Weight 70kg
+Noise <75dB
+Protection level IP20
+Allow ambient temperature -40~60 ° C (derating greater than 50 ° C)
+Cooling method Intelligent air cooling
+Allow relative humidity 0~95% (No condensation)
+Allow altitude 3000m(Derating greater than 3000m)
+Communication parameters Communication interfaceRS4 8 5,Ethernet,CAN
+Communication protocol ModbusTCP/RTU,CAN2.0
+BMS access Support
+Specification of Liquid Cooled Battery Cabinet Model：JL-BC-5-768/280-L
+Page： 17 of 22
+4.7. Liquid Cooling Unit
+The liquid cooling unit is used to adjust the temperature of the battery pack in the energy storage system to ensure that
+it always works within the appropriate temperature range to maintain the best working condition of the system.
+4.7.1. Working principle of liquid cooling unit
+The liquid cooling unit is mainly composed of compressor, condenser, throttling element, evaporator, water pump,
+expansion tank, PTC liquid heater and necessary control components.
+The unit has four modes, including cooling mode, heating mode (optional), standby mode and fault mode.
+The unit can intelligently switch between the four modes according to the parameters fed back by the battery during
+work.
+4.7.2. Technical parameters of liquid cooling unit
+The technical parameters of the liquid cooling unit are as follows:
+Table 8 Parameters of Liquid Cooling Unit
+No. Technical projects Parameter
+1 Refrigeration capacity@L45/W18 5.6kw
+2 heating capacityW10 ℃ 2.5kw
+3 Refrigeration input power@L45/W18 2.34kw
+4 Water outlet temperature 18 ℃
+5 Rated circulating water flow 40/ min@ 160kpa
+6 Coolant type 50%Ethylene Glycol Aqueous Solution
+7 Refrigerant type R134a/1.8kg
+8 Communication interface RS485
+9 Power range AC220V50HZ/60HZ
+10 Overall dimensions (depth,width and height) 1084*250*723mm
+11 Quality (without refrigerant) ≤100kg
+Specification of Liquid Cooled Battery Cabinet Model：JL-BC-5-768/280-L
+Page： 18 of 22
+4.8. Fire Fighting System
+A set of inspiratory perfluorhexanone fire fighting system is set up in the energy storage cabinet, which has a better
+detection and suppression effect on the fire risk of the battery cabin and the electrical cabin, and ensures the safe and
+stable operation of the battery system
+4.8.1. Working principle of fire fighting system
+The fire fighting system is a pack-level fire fighting system. A single energy storage cabinet is equipped with a 5kg pump
+group of perfluorohexanone fire extinguishing equipment for controlling the spraying of fire extinguishing agents, and a
+TC05 composite detector (H2\C0\VOC smoke \ temperature). There are a total of 6 eruption pipes: 1-5 for the pack battery
+fire extinguishing, the sixth for the cabin eruption fire extinguishing. The fire fighting system CAN communicate with BMS
+to determine the location of the fire, accurately extinguish the fire, and alarm itself.
+4.8.2. Fire protection system functions
+The main functions of the fire protection system are as follows：
+Detect fire signals within each battery pack/battery compartment, including but not limited to smoke, temperature, gas
+(CO, VOC, etc.) concentration;
+According to the detected fire signal, the extinguishing agent is sprayed into the corresponding battery pack and atomized
+Perfluorohexanone with good cooling effect was selected as fire extinguishing agent
+Supports at least 2 spray strategies to achieve sustained cooling of the target battery
+Send system operation status signals to BMS via CAN
+4.9. Auxiliary Electrical System
+4.9.1. Operation mode description
+When the integrated cabinet is in charging operation mode, the battery is charged by an external 380V power supply, and
+the liquid cooling unit, fire protection, and auxiliary power supply are also powered by external mains power. When the
+integrated cabinet is in discharge mode, the electrochemical energy storage is converted into AC380V by the lithium
+battery for external power supply. At this time, the power supply for the liquid cooling unit, fire protection, and auxiliary
+power is supplied by the battery system. When the external power supply fails or the battery system reaches a protective
+state and stops discharging, important equipment of the auxiliary power system is powered by UPS for data storage or
+switching operations
+Specification of Liquid Cooled Battery Cabinet Model：JL-BC-5-768/280-L
+Page： 19 of 22
+4.10. EMS
+4.10.1. Product description
+The integrated centralized control unit of the energy storage system is the local monitoring and management unit of the
+container energy storage system or distributed energy storage cabinet system. It has the functions of real-time integrated
+aggregation, display, and joint control of the information of all components of the energy storage system. It also has the
+functions of local monitoring and protection and energy management. Support IEC6180, MODBUS, 104, MQTT and other
+communication protocols with energy storage system equipment and battery system safety and health and other
+operating conditions of advanced diagnosis function, with local intelligent operation and maintenance function, is the
+energy storage system intensive, intelligent, integrated low-cost local centralized control management equipment.
+4.10.2. Module appearance
+Figure 9 EMS appearance
+Specification of Liquid Cooled Battery Cabinet Model：JL-BC-5-768/280-L
+Page： 20 of 22
+5. Product Certification
+This product has been commissioned by a third party with appropriate qualifications to conduct testing and certification
+according to a number of domestic and foreign laws and regulations.
+The certification or test status is referred to the following table.
+Table 9 The definition of communication terminal
+No. Product Certification regulations Status
+1
+Cell
+UN38 .3 Be certified
+2 GB/T36276 Be certified
+3 UL1973 Be certified
+4 UL9540A Be certified
+5 UL1642 Be certified
+6 IEC62619 Be certified
+7
+Battery box
+UN38 .3 Be certified
+8 GB/T36276 Be certified
+9 UL9540A Be certified
+Specification of Liquid Cooled Battery Cabinet Model：JL-BC-5-768/280-L
+Page： 21 of 22
+6. Product Instructions
+(1) . The battery cabinet can be used alone or in parallel with multiple machines, supporting up to 10 parallel
+cabinets.When using battery cabinets in parallel,Please refer to the customized multi machine parallel scheme;
+(2) The battery cabinet must be used under the specified charging rate or power conditions, and the upper charging
+limit voltage must not exceed the product technology requirement,to prevent overcharging of the battery and avoid
+affecting the charging and discharging performance, mechanical performance, and safety performance of the battery;
+(3) The battery cabinet must be used under the specified discharge rate or power conditions, and the lower limit voltage
+of discharge must not exceed the product technology requirement,to prevent overcharging of the battery and avoid
+affecting the charging and discharging performance, mechanical performance, and safety performance of the battery;
+(4) The battery cabinet must be used under specified environmental conditions, as high or low temperature
+environments can affect the performance and safety of the battery Complete;
+(5) The battery cabinet must be used or stored in a clean and ventilated environment, avoiding contact with corrosive
+substances, and kept away from fire Source and heat source;
+(6) The battery cabinet is prohibited from being used and stored in areas with strong static electricity and strong
+magnetic fields to avoid safety hazards;
+(7) Before installing or wiring the battery cabinet, it is prohibited to remove the dust covers that connect the positive and
+negative poles to the communication socket, in order to avoid contact short circuits and grounding Mouth ash
+accumulation;
+(8) Without the permission of JILIPOW, it is not allowed to disassemble or modify this product without authorization.
+Otherwise, the warranty will terminate. If a safety accident occurs, our company is not responsible;
+(9) Do not mix the battery box with metal objects to avoid short circuits and safety risks;
+(10) The battery cabinet must be installed or stored upright according to the design state, and it is strictly prohibited to
+place it on the side or upside down.
+The use of battery cabinets must strictly comply with the above requirements, otherwise the warranty will terminate,
+resulting in product performance damage and safety accidents,Our company is not responsible.
+7. Product Maintenance and Upkeep
+(1) When the battery cabinet is left unused or stored for a long time, it should be maintained at a state of charge of 30%
+to 50%.
+(2) When the battery cabinet is left unused or stored for a long time, it is recommended to replenish the battery every 3
+months to prevent over discharge and loss of power A charging and discharging cycle should be conducted once a
+Specification of Liquid Cooled Battery Cabinet Model：JL-BC-5-768/280-L
+Page： 22 of 22
+year.
+Disclaimer:
+This device should be used within the scope specified in the product specifications. Due to improper behavior by the
+product demand unit during installation, debugging, maintenance, use, etc., or non compliant use outside the specified
+scope of product use, etc,the manufacturer shall not be liable for any damages caused to personnel, animals, or property
+beyond the terms of the contract.

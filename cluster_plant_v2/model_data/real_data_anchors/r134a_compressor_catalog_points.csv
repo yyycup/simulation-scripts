@@ -1,0 +1,13 @@
+model,refrigerant,displacement_cc_rev,capacity_w,input_power_w,cop_w_w,rated_speed_rpm,speed_range_rpm,test_conditions,application,source_url,retrieved
+Boyard JVSB150Z24,R134a/R1234yf,15.0,2100,656,3.20,3600,900-4500,"cond A: Tevap 7.2 C / Tcond 54.4 C / Tsuction 35 C / Tliquid 46.1 C",DC 24V parking/EV AC twin-rotor,https://www.zj-boyard.com/product/dc-24v-air-conditioner-compressor-for-vehicles-and-rv-cabin/,2026-09-01
+Boyard JVB075Z24,R134a/R1234yf,7.5,850,300,2.83,3300,2500-4000,"cond A: Tevap 7.2 C / Tcond 54.4 C / Tsuction 35 C / Tliquid 46.1 C",DC 24V AC compressor,https://www.zj-boyard.com/product/dc-24v-air-conditioner-compressor-for-vehicles-and-rv-cabin/,2026-09-01
+Brogen DM18A1,R134a/R1234yf,,1380 @3000rpm,720,1.90,3000,3000-6000,,EV electric compressor 312V,"https://chinese.alibaba.com/product-detail/Brogen-High-Quality-12V-24v-Electric-10000008111556.html",2026-09-01
+Brogen DM18A1,R134a/R1234yf,,1890 @4000rpm,980,1.95,4000,3000-6000,,EV electric compressor 312V,"https://chinese.alibaba.com/product-detail/Brogen-High-Quality-12V-24v-Electric-10000008111556.html",2026-09-01
+Brogen DM18A1,R134a/R1234yf,,2900 @6000rpm,1500,1.95,6000,3000-6000,,EV electric compressor 312V,"https://chinese.alibaba.com/product-detail/Brogen-High-Quality-12V-24v-Electric-10000008111556.html",2026-09-01
+Highly BTH420SDPC9EQA,R410A/R134a,41.8,5680,,3.40,,,rated-point catalog value; bus/ESS battery thermal management inverter compressor,https://xyd-compressor.com/HIGHLY/17583.html,2026-09-01
+Highly VTE848SKTQ9JK,R134a,,13000,,,,"catalog listing: 13 kW R134a inverter ESS battery thermal management compressor (same platform also 27 kW R32/R410A)",ESS battery thermal management,https://xyd-compressor.com/HIGHLY/,2026-09-01
+Highly BSA804SDFA3BUA,R134a,8.0,960,,3.37,,,24V/48V DC inverter cabinet AC compressor,https://xyd-compressor.com/HIGHLY/17543.html,2026-09-01
+Highly VDD145SDEA3DB,R134a,14.5,1795,,3.59,,,24V/48V DC inverter parking AC compressor,http://www.xyd-lubricant.com/compressor/12209.html,2026-09-01
+FourSeason FSQA073Z24,R134a,7.3,1025,312,,3600 (rated eval),1800-4500,,24V BLDC rotary; battery cooling system application listed,https://chinese.alibaba.com/product-detail/Air-cooling-R134a-miniature-bldc-rotary-1601137812574.html,2026-09-01
+FourSeason FSQA088Z24,R134a,8.8,1270,410,,3600 (rated eval),2000-4500,,24V BLDC rotary; battery cooling system application listed,https://chinese.alibaba.com/product-detail/Air-cooling-R134a-miniature-bldc-rotary-1601137812574.html,2026-09-01
+FourSeason FSQA135Z24,R134a,13.5,1950,965,,3600 (rated eval),2000-4500,,24V BLDC rotary; battery cooling system application listed,https://chinese.alibaba.com/product-detail/Air-cooling-R134a-miniature-bldc-rotary-1601137812574.html,2026-09-01

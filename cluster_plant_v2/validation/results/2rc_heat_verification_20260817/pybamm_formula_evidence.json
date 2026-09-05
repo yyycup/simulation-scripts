@@ -1,0 +1,28 @@
+{
+  "pybamm_version": "26.5.0",
+  "formula": {
+    "Q_R0_W": "Current [A]^2 * R0 [Ohm]",
+    "Q_RC1_W": "-Current [A] * Element-1 overpotential [V]",
+    "Q_RC2_W": "-Current [A] * Element-2 overpotential [V]",
+    "Q_reversible_W": "-Current [A] * Cell temperature [K] * Entropic change [V/K]",
+    "Q_total_W": "Q_R0_W + Q_RC1_W + Q_RC2_W + Q_reversible_W"
+  },
+  "solution_time_convention": "all variables read from the same Simulation.step() end point",
+  "sources": {
+    "ResistorElement": {
+      "path": "C:\\Users\\24776\\miniforge3\\envs\\btms\\Lib\\site-packages\\pybamm\\models\\submodels\\equivalent_circuit_elements\\resistor_element.py",
+      "line_start": 4,
+      "line_end": 38
+    },
+    "RCElement": {
+      "path": "C:\\Users\\24776\\miniforge3\\envs\\btms\\Lib\\site-packages\\pybamm\\models\\submodels\\equivalent_circuit_elements\\rc_element.py",
+      "line_start": 4,
+      "line_end": 73
+    },
+    "OCVElement": {
+      "path": "C:\\Users\\24776\\miniforge3\\envs\\btms\\Lib\\site-packages\\pybamm\\models\\submodels\\equivalent_circuit_elements\\ocv_element.py",
+      "line_start": 4,
+      "line_end": 62
+    }
+  }
+}

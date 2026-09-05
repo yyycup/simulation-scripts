@@ -1,0 +1,26 @@
+  completed E1_560A_forward
+  completed E1_560A_reverse
+  completed E2_560A_direct_return
+  completed E1_1120A_forward
+  completed E1_1120A_reverse
+  completed E2_1120A_direct_return
+--- snapshot at 1800 s ---
+                        flow_spread_pct  battery_max_temp_c  inter_pack_delta_t_k  cluster_delta_t_k
+case_id                                                                                             
+E1_560A_forward                4.908338           16.484093              0.188908           2.677127
+E1_560A_reverse                4.908338           16.631379              0.188591           2.918369
+E2_560A_direct_return         13.783960           16.584389              0.511467           2.943421
+E1_1120A_forward               4.908338           31.887650              0.212394           2.946607
+E1_1120A_reverse               4.908338           31.921480              0.212220           3.007262
+E2_1120A_direct_return        13.783960           32.001900              0.574211           3.243300
+
+--- 560A ---
+  E1 流向  同程正向 vs 同程反向: cluster_dT  2.677 ->  2.918 K (+0.241 K); batt_max 16.484 -> 16.631 C (+0.147 C)
+  E2 拓扑  同程正向 vs 异程正向: flow_spread  4.908% -> 13.784% (2.81x); inter_pack_dT 0.1889 -> 0.5115 K (2.71x)
+
+--- 1120A ---
+  E1 流向  同程正向 vs 同程反向: cluster_dT  2.947 ->  3.007 K (+0.061 K); batt_max 31.888 -> 31.921 C (+0.034 C)
+  E2 拓扑  同程正向 vs 异程正向: flow_spread  4.908% -> 13.784% (2.81x); inter_pack_dT 0.2124 -> 0.5742 K (2.70x)
+
+wrote C:\Users\24776\PycharmProjects\PythonProject\集成仿真多种控制\cluster_plant_v2\validation\results\piping_topology_scan_20260901\piping_topology_scan.csv
+rows: 24

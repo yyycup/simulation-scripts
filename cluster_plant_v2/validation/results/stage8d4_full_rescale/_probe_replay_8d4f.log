@@ -1,0 +1,15 @@
+replayed 320/1280
+replayed 640/1280
+replayed 960/1280
+replayed 1280/1280
+time_min  pred_C  meas_C  gap_K  cmd
+   0.1   25.00   25.02   -0.02    2800
+  13.4   25.22   25.26   -0.03    1226
+  26.8   25.28   25.31   -0.03    1523
+  40.1   25.29   25.33   -0.03    1631
+  53.4   25.31   25.34   -0.03    1000
+  66.8   25.33   25.36   -0.03    1873
+  80.1   25.35   25.38   -0.04    1853
+  93.4   25.38   25.42   -0.04    1756
+late segment: pred mean 25.42 C, meas mean 25.45 C, gap -0.032 K
+saved C:\Users\24776\PycharmProjects\PythonProject\集成仿真多种控制\cluster_plant_v2\validation\results\stage8d4_full_rescale\_probe_predictor_replay_vs_plant.csv

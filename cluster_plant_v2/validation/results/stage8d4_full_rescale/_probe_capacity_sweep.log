@@ -1,0 +1,14 @@
+sweep 1000 rpm done
+sweep 1300 rpm done
+sweep 1600 rpm done
+sweep 1900 rpm done
+sweep 2200 rpm done
+sweep 2500 rpm done
+cmd   act   q_evap_plant  q_map   ratio  tank   supply  bat
+ 1000   1000         4695     4629   1.01  23.23  21.68  25.38
+ 1300   1300         5963     5827   1.02  22.57  20.62  25.22
+ 1600   1600         7042     6822   1.03  21.32  19.03  24.41
+ 1900   1900         7946     7631   1.04  19.75  17.15  23.22
+ 2200   2200         8784     8370   1.05  18.34  15.46  22.23
+ 2500   2500         9823     9290   1.06  17.93  14.70  22.31
+saved C:\Users\24776\PycharmProjects\PythonProject\集成仿真多种控制\cluster_plant_v2\validation\results\stage8d4_full_rescale\_probe_capacity_vs_plant_sweep.csv

@@ -1,0 +1,11 @@
+system,refrigerant,measurement,conditions,value,unit,source_url,retrieved,confidence
+Bus rooftop AC test rig 1,R134a,"cooling capacity @ 2000 rpm (measured, target match)",bus AC rating test; compressor speed sweep,17.5,kW,https://max.book118.com/html/2024/0316/5342144101011123.shtm,2026-09-01,medium (document preview; conditions partly stated)
+Bus rooftop AC test rig 1,R134a,"compressor input power @ 17.5 kW point",bus AC rating test,6.35,kW,https://max.book118.com/html/2024/0316/5342144101011123.shtm,2026-09-01,medium
+Bus rooftop AC test rig 1,R134a,system COP @ 17.5 kW point,derived 17.5/6.35,2.78,W/W,https://max.book118.com/html/2024/0316/5342144101011123.shtm,2026-09-01,medium
+Bus rooftop AC test rig 1,R134a,compressor displacement used in R134a variant,bus AC rooftop unit,616,cc/rev,https://max.book118.com/html/2024/0316/5342144101011123.shtm,2026-09-01,medium
+EV heat pump bench (Sanhua R134a vs R1234yf),R134a,"capacity 5.83 kW / COP 2.6 @ 6000 rpm",outdoor/indoor 43x43 C & 50% RH cooling,5.83,kW,https://wk.baidu.com/view/7e731f4ac950ad02de80d4d8d15abe23482f0383,2026-09-01,low-medium (scanned table; refrigerant attribution inferred)
+EV heat pump bench (Sanhua R134a vs R1234yf),R134a,"capacity 3.48 kW / COP 2.76 @ 4000 rpm",outdoor/indoor 43x27 C & 50% RH cooling,3.48,kW,https://wk.baidu.com/view/7e731f4ac950ad02de80d4d8d15abe23482f0383,2026-09-01,low-medium
+EV heat pump bench (Sanhua R134a vs R1234yf),R134a,"capacity 5.47 kW / COP 3.28 @ 5000 rpm",outdoor/indoor 38x38 C & 50% RH cooling,5.47,kW,https://wk.baidu.com/view/7e731f4ac950ad02de80d4d8d15abe23482f0383,2026-09-01,low-medium
+EV heat pump bench (Sanhua R134a vs R1234yf),R134a,"capacity 3.22 kW / COP 4.68 @ 3000 rpm",outdoor/indoor 27x27 C & 50% RH cooling,3.22,kW,https://wk.baidu.com/view/7e731f4ac950ad02de80d4d8d15abe23482f0383,2026-09-01,low-medium
+R134a direct-cooling BTMS rig,,"scroll compressor displacement & speed range",ECY33A1-52-0101 dedicated R134a scroll,33 / 2000-6000,cc/rev / rpm,https://www.eac.enmoreauto.com/newsinfo/8006092.html,2026-09-01,high (paper reprint with instrument list)
+Published simulation benchmark,,"condensing temp +1 C -> compressor power +3%; evaporating temp +1 C -> power -0.3%",R134a/R290 variable-speed compressor study,3 / -0.3,% per K,https://www.zhilengxuebao.com/zh/onlineFirst/,2026-09-01,medium (paper abstract)
