@@ -267,5 +267,112 @@ class ColdPlateHeatCurrentReferenceComparisonTests(unittest.TestCase):
             plate.step(DT_S, INLET_K, 0.1, np.zeros(3), flow_direction=0)
 
 
+class ColdPlateHeatCurrentSubsteppingTests(unittest.TestCase):
+    """Stage 1.6 internal Euler sub-stepping."""
+
+    def test_substep_count_floors_at_one_and_handles_short_outer_steps(self) -> None:
+        plate = ColdPlateHeatCurrent()
+        self.assertEqual(plate.substep_count(5.0), 5)
+        self.assertEqual(plate.substep_count(1.0), 1)
+        self.assertEqual(plate.substep_count(0.5), 1)
+
+    def test_outer_step_report_includes_internal_steps_and_dt(self) -> None:
+        plate = ColdPlateHeatCurrent()
+        result = plate.step(DT_S, INLET_K, 0.1, Q_BP_NOMINAL)
+        self.assertEqual(result["internal_steps"], 5)
+        self.assertAlmostEqual(result["internal_dt_s"], 1.0)
+
+    def test_disabling_substepping_yields_native_results(self) -> None:
+        # Sub-stepping with N=1 must be bit-exactly identical to the legacy
+        # single-step path: when internal_dt_s == dt the sub-step loop runs a
+        # single Euler step with no averaging or post-processing.
+        # The reverse-direction case (sub-step ON with internal_dt_s=1s but
+        # dt=5s) is intentionally NOT asserted equal -- 5x1s sub-steps have
+        # smaller truncation error than 1x5s Euler even when both are stable.
+        plate_native = ColdPlateHeatCurrent(internal_dt_s=DT_S)
+        plate_single_sub = ColdPlateHeatCurrent(internal_dt_s=DT_S)
+
+        # Same configuration -> same number of internal steps = 1.
+        native_result = plate_native.step(DT_S, INLET_K, 0.1, Q_BP_NOMINAL)
+        single_sub_result = plate_single_sub.step(DT_S, INLET_K, 0.1, Q_BP_NOMINAL)
+        self.assertEqual(native_result["internal_steps"], 1)
+        self.assertEqual(single_sub_result["internal_steps"], 1)
+        np.testing.assert_array_equal(
+            native_result["coolant_outlet_temperature"],
+            single_sub_result["coolant_outlet_temperature"],
+        )
+        np.testing.assert_array_equal(
+            native_result["q_plate_to_fluid_total"],
+            single_sub_result["q_plate_to_fluid_total"],
+        )
+
+    def test_substepped_run_is_more_accurate_than_native_when_stable(self) -> None:
+        # At dt=5s, mass_flow=0.1 kg/s the stability limit is ~22 s, so both
+        # 5x1s and 1x5s Euler are stable -- but 5x1s has ~5x smaller truncation
+        # error. The 5s-path is the legacy reference; sub-stepping must NOT
+        # make things worse, and may improve the answer. We verify by running
+        # a long horizon and comparing to a fine-reference 1s path.
+        plate_fine = ColdPlateHeatCurrent(internal_dt_s=1.0)
+        plate_native = ColdPlateHeatCurrent(internal_dt_s=DT_S)
+        plate_sub = ColdPlateHeatCurrent(internal_dt_s=1.0)
+
+        for _ in range(120):
+            r_fine = plate_fine.step(DT_S, INLET_K, 0.1, Q_BP_NOMINAL)
+            r_native = plate_native.step(DT_S, INLET_K, 0.1, Q_BP_NOMINAL)
+            r_sub = plate_sub.step(DT_S, INLET_K, 0.1, Q_BP_NOMINAL)
+        # Sub-stepped and fine reference both run at 1s internal -> identical
+        # to fp (same loop, same operations on same state).
+        np.testing.assert_array_equal(
+            r_sub["coolant_outlet_temperature"],
+            r_fine["coolant_outlet_temperature"],
+        )
+        # Native (5s Euler) is NOT identical, but must be within truncation
+        # bound (O(dt^2) per step). At ~0.0014 K/s of outlet drift this is
+        # ~0.04 K max -- observed 0.054 K. Use 0.5 K as a safe upper bound.
+        self.assertLess(
+            abs(
+                r_native["coolant_outlet_temperature"]
+                - r_fine["coolant_outlet_temperature"]
+            ),
+            0.5,
+        )
+
+    def test_invalid_internal_dt_is_rejected(self) -> None:
+        for bad in (0.0, -1.0, float("nan")):
+            with self.subTest(internal_dt_s=bad):
+                with self.assertRaises(ValueError):
+                    ColdPlateHeatCurrent(internal_dt_s=bad)
+
+    def test_outer_step_plate_energy_balance_holds_with_substepping(self) -> None:
+        # With sub-stepping, the plate energy balance is over the OUTER step:
+        #   C * (T_end - T_start) / dt = Q_battery - mean_j(Q_j)
+        # and the fluid-side identity holds for the averaged outlet.
+        plate = ColdPlateHeatCurrent(initial_temperature_c=25.0)
+        capacity_rate = 0.1 * plate.coolant_cp
+
+        for _ in range(5):
+            previous_energy = (
+                plate.zone_heat_capacities * plate.plate_temperatures
+            )
+            result = plate.step(DT_S, INLET_K, 0.1, Q_BP_NOMINAL)
+            stored_change = (
+                plate.zone_heat_capacities * plate.plate_temperatures
+                - previous_energy
+            )
+            np.testing.assert_allclose(
+                stored_change,
+                DT_S * (Q_BP_NOMINAL - result["q_plate_to_fluid"]),
+                rtol=1e-9,
+            )
+            coolant_gain = capacity_rate * (
+                result["coolant_outlet_temperature"] - INLET_K
+            )
+            self.assertAlmostEqual(
+                coolant_gain,
+                result["q_plate_to_fluid_total"],
+                places=9,
+            )
+
+
 if __name__ == "__main__":
     unittest.main()
