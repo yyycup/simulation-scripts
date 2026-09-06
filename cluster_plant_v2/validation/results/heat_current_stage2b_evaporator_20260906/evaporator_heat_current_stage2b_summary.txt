@@ -1,0 +1,25 @@
+Stage 2B -- EvaporatorHeatCurrent vs incumbent cycle
+====================================================
+grid points attempted             : 280
+solved cases                       : 259
+skipped (envelope guard)           : 56
+failed (solver)                    : 21
+
+Identity check (the hard requirement)
+-------------------------------------
+max |Q_HC - Q_NTU| / Q_NTU         : 2.175e-16
+max |Q_HC - Q_cycle| / Q_cycle     : 1.263e-10   (solver closure, not identity)
+
+Energy closure
+--------------
+max |G_c(T_in - T_out_ss) - Q_HC|  : 1.155e-10 W
+max |G_c(T_in - T_out_ap) - Q_ap|  : 1.149e-10 W
+
+Operating envelope observed
+---------------------------
+evaporator effectiveness           : 0.9378 .. 0.9741
+max |T_out_ss - T_out_applied|     : 15.9304 K
+
+Artifacts
+---------
+grid CSV                           : evaporator_heat_current_stage2b_grid.csv
