@@ -1,0 +1,1271 @@
+[
+  {
+    "case_id": "V1_constant_nominal_forward",
+    "description": "560 A, 4000 rpm compressor, nominal pump, forward flow.",
+    "initial_compressor_rpm": 4000.0,
+    "initial_cluster_current_a": 560.0,
+    "diff": {
+      "packs_battery_avg_k": {
+        "max_abs": 0.0,
+        "mean_abs": 0.0,
+        "max_idx": 0
+      },
+      "packs_battery_max_k": {
+        "max_abs": 0.0,
+        "mean_abs": 0.0,
+        "max_idx": 0
+      },
+      "packs_plate_avg_k": {
+        "max_abs": 0.0,
+        "mean_abs": 0.0,
+        "max_idx": 0
+      },
+      "packs_plate_max_k": {
+        "max_abs": 0.0,
+        "mean_abs": 0.0,
+        "max_idx": 0
+      },
+      "tank_temperature_k": {
+        "delta": 0.0,
+        "abs": 0.0
+      },
+      "compressor_speed_actual_rpm": {
+        "delta": 0.0,
+        "abs": 0.0
+      },
+      "q_evap_applied_w": {
+        "delta": 0.0,
+        "abs": 0.0
+      },
+      "supply_delay_queue_k": {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "mean_abs": 0.0
+      },
+      "return_delay_queue_k": {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "mean_abs": 0.0
+      }
+    },
+    "raw": {
+      "legacy": {
+        "packs_battery_avg_k": [
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003
+        ],
+        "packs_battery_max_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "packs_plate_avg_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "packs_plate_max_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "tank_temperature_k": 298.15,
+        "compressor_speed_actual_rpm": 4000.0,
+        "q_evap_applied_w": 18009.272475241098,
+        "supply_delay_queue_k": [
+          292.24663518894215,
+          292.24663518894215,
+          292.24663518894215
+        ],
+        "return_delay_queue_k": [
+          296.86172426482534,
+          296.86172426482534,
+          296.86172426482534,
+          296.86172426482534
+        ]
+      },
+      "heat_current": {
+        "packs_battery_avg_k": [
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003
+        ],
+        "packs_battery_max_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "packs_plate_avg_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "packs_plate_max_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "tank_temperature_k": 298.15,
+        "compressor_speed_actual_rpm": 4000.0,
+        "q_evap_applied_w": 18009.272475241098,
+        "supply_delay_queue_k": [
+          292.24663518894215,
+          292.24663518894215,
+          292.24663518894215
+        ],
+        "return_delay_queue_k": [
+          296.86172426482534,
+          296.86172426482534,
+          296.86172426482534,
+          296.86172426482534
+        ]
+      }
+    },
+    "audit_runtime_s": 0.7524907999904826
+  },
+  {
+    "case_id": "V2_current_step",
+    "description": "Current step 560 -> 800 A at 200 s.",
+    "initial_compressor_rpm": 4000.0,
+    "initial_cluster_current_a": 560.0,
+    "diff": {
+      "packs_battery_avg_k": {
+        "max_abs": 0.0,
+        "mean_abs": 0.0,
+        "max_idx": 0
+      },
+      "packs_battery_max_k": {
+        "max_abs": 0.0,
+        "mean_abs": 0.0,
+        "max_idx": 0
+      },
+      "packs_plate_avg_k": {
+        "max_abs": 0.0,
+        "mean_abs": 0.0,
+        "max_idx": 0
+      },
+      "packs_plate_max_k": {
+        "max_abs": 0.0,
+        "mean_abs": 0.0,
+        "max_idx": 0
+      },
+      "tank_temperature_k": {
+        "delta": 0.0,
+        "abs": 0.0
+      },
+      "compressor_speed_actual_rpm": {
+        "delta": 0.0,
+        "abs": 0.0
+      },
+      "q_evap_applied_w": {
+        "delta": 0.0,
+        "abs": 0.0
+      },
+      "supply_delay_queue_k": {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "mean_abs": 0.0
+      },
+      "return_delay_queue_k": {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "mean_abs": 0.0
+      }
+    },
+    "raw": {
+      "legacy": {
+        "packs_battery_avg_k": [
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003
+        ],
+        "packs_battery_max_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "packs_plate_avg_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "packs_plate_max_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "tank_temperature_k": 298.15,
+        "compressor_speed_actual_rpm": 4000.0,
+        "q_evap_applied_w": 18009.272475241098,
+        "supply_delay_queue_k": [
+          292.24663518894215,
+          292.24663518894215,
+          292.24663518894215
+        ],
+        "return_delay_queue_k": [
+          296.86172426482534,
+          296.86172426482534,
+          296.86172426482534,
+          296.86172426482534
+        ]
+      },
+      "heat_current": {
+        "packs_battery_avg_k": [
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003
+        ],
+        "packs_battery_max_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "packs_plate_avg_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "packs_plate_max_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "tank_temperature_k": 298.15,
+        "compressor_speed_actual_rpm": 4000.0,
+        "q_evap_applied_w": 18009.272475241098,
+        "supply_delay_queue_k": [
+          292.24663518894215,
+          292.24663518894215,
+          292.24663518894215
+        ],
+        "return_delay_queue_k": [
+          296.86172426482534,
+          296.86172426482534,
+          296.86172426482534,
+          296.86172426482534
+        ]
+      }
+    },
+    "audit_runtime_s": 0.6996652000234462
+  },
+  {
+    "case_id": "V3_compressor_step",
+    "description": "Compressor step 2000 -> 4000 rpm at 200 s.",
+    "initial_compressor_rpm": 2000.0,
+    "initial_cluster_current_a": 560.0,
+    "diff": {
+      "packs_battery_avg_k": {
+        "max_abs": 0.0,
+        "mean_abs": 0.0,
+        "max_idx": 0
+      },
+      "packs_battery_max_k": {
+        "max_abs": 0.0,
+        "mean_abs": 0.0,
+        "max_idx": 0
+      },
+      "packs_plate_avg_k": {
+        "max_abs": 0.0,
+        "mean_abs": 0.0,
+        "max_idx": 0
+      },
+      "packs_plate_max_k": {
+        "max_abs": 0.0,
+        "mean_abs": 0.0,
+        "max_idx": 0
+      },
+      "tank_temperature_k": {
+        "delta": 0.0,
+        "abs": 0.0
+      },
+      "compressor_speed_actual_rpm": {
+        "delta": 0.0,
+        "abs": 0.0
+      },
+      "q_evap_applied_w": {
+        "delta": 0.0,
+        "abs": 0.0
+      },
+      "supply_delay_queue_k": {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "mean_abs": 0.0
+      },
+      "return_delay_queue_k": {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "mean_abs": 0.0
+      }
+    },
+    "raw": {
+      "legacy": {
+        "packs_battery_avg_k": [
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003
+        ],
+        "packs_battery_max_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "packs_plate_avg_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "packs_plate_max_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "tank_temperature_k": 298.15,
+        "compressor_speed_actual_rpm": 2000.0,
+        "q_evap_applied_w": 9742.892442434199,
+        "supply_delay_queue_k": [
+          294.9563202729783,
+          294.9563202729783,
+          294.9563202729783
+        ],
+        "return_delay_queue_k": [
+          297.4530516951054,
+          297.4530516951054,
+          297.4530516951054,
+          297.4530516951054
+        ]
+      },
+      "heat_current": {
+        "packs_battery_avg_k": [
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003
+        ],
+        "packs_battery_max_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "packs_plate_avg_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "packs_plate_max_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "tank_temperature_k": 298.15,
+        "compressor_speed_actual_rpm": 2000.0,
+        "q_evap_applied_w": 9742.892442434199,
+        "supply_delay_queue_k": [
+          294.9563202729783,
+          294.9563202729783,
+          294.9563202729783
+        ],
+        "return_delay_queue_k": [
+          297.4530516951054,
+          297.4530516951054,
+          297.4530516951054,
+          297.4530516951054
+        ]
+      }
+    },
+    "audit_runtime_s": 0.9333400000468828
+  },
+  {
+    "case_id": "V4_pump_step",
+    "description": "Pump step 3000 -> 4500 rpm at 200 s.",
+    "initial_compressor_rpm": 4000.0,
+    "initial_cluster_current_a": 560.0,
+    "diff": {
+      "packs_battery_avg_k": {
+        "max_abs": 0.0,
+        "mean_abs": 0.0,
+        "max_idx": 0
+      },
+      "packs_battery_max_k": {
+        "max_abs": 0.0,
+        "mean_abs": 0.0,
+        "max_idx": 0
+      },
+      "packs_plate_avg_k": {
+        "max_abs": 0.0,
+        "mean_abs": 0.0,
+        "max_idx": 0
+      },
+      "packs_plate_max_k": {
+        "max_abs": 0.0,
+        "mean_abs": 0.0,
+        "max_idx": 0
+      },
+      "tank_temperature_k": {
+        "delta": 0.0,
+        "abs": 0.0
+      },
+      "compressor_speed_actual_rpm": {
+        "delta": 0.0,
+        "abs": 0.0
+      },
+      "q_evap_applied_w": {
+        "delta": 0.0,
+        "abs": 0.0
+      },
+      "supply_delay_queue_k": {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "mean_abs": 0.0
+      },
+      "return_delay_queue_k": {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "mean_abs": 0.0
+      }
+    },
+    "raw": {
+      "legacy": {
+        "packs_battery_avg_k": [
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003
+        ],
+        "packs_battery_max_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "packs_plate_avg_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "packs_plate_max_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "tank_temperature_k": 298.15,
+        "compressor_speed_actual_rpm": 4000.0,
+        "q_evap_applied_w": 18009.272475241098,
+        "supply_delay_queue_k": [
+          292.24663518894215,
+          292.24663518894215,
+          292.24663518894215
+        ],
+        "return_delay_queue_k": [
+          296.86172426482534,
+          296.86172426482534,
+          296.86172426482534,
+          296.86172426482534
+        ]
+      },
+      "heat_current": {
+        "packs_battery_avg_k": [
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003
+        ],
+        "packs_battery_max_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "packs_plate_avg_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "packs_plate_max_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "tank_temperature_k": 298.15,
+        "compressor_speed_actual_rpm": 4000.0,
+        "q_evap_applied_w": 18009.272475241098,
+        "supply_delay_queue_k": [
+          292.24663518894215,
+          292.24663518894215,
+          292.24663518894215
+        ],
+        "return_delay_queue_k": [
+          296.86172426482534,
+          296.86172426482534,
+          296.86172426482534,
+          296.86172426482534
+        ]
+      }
+    },
+    "audit_runtime_s": 0.7059617000049911
+  },
+  {
+    "case_id": "V5_low_flow",
+    "description": "Low flow (pump 2400 rpm).",
+    "initial_compressor_rpm": 4000.0,
+    "initial_cluster_current_a": 560.0,
+    "diff": {
+      "packs_battery_avg_k": {
+        "max_abs": 0.0,
+        "mean_abs": 0.0,
+        "max_idx": 0
+      },
+      "packs_battery_max_k": {
+        "max_abs": 0.0,
+        "mean_abs": 0.0,
+        "max_idx": 0
+      },
+      "packs_plate_avg_k": {
+        "max_abs": 0.0,
+        "mean_abs": 0.0,
+        "max_idx": 0
+      },
+      "packs_plate_max_k": {
+        "max_abs": 0.0,
+        "mean_abs": 0.0,
+        "max_idx": 0
+      },
+      "tank_temperature_k": {
+        "delta": 0.0,
+        "abs": 0.0
+      },
+      "compressor_speed_actual_rpm": {
+        "delta": 0.0,
+        "abs": 0.0
+      },
+      "q_evap_applied_w": {
+        "delta": 0.0,
+        "abs": 0.0
+      },
+      "supply_delay_queue_k": {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "mean_abs": 0.0
+      },
+      "return_delay_queue_k": {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "mean_abs": 0.0
+      }
+    },
+    "raw": {
+      "legacy": {
+        "packs_battery_avg_k": [
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003
+        ],
+        "packs_battery_max_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "packs_plate_avg_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "packs_plate_max_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "tank_temperature_k": 298.15,
+        "compressor_speed_actual_rpm": 4000.0,
+        "q_evap_applied_w": 18009.272475241098,
+        "supply_delay_queue_k": [
+          292.24663518894215,
+          292.24663518894215,
+          292.24663518894215
+        ],
+        "return_delay_queue_k": [
+          296.86172426482534,
+          296.86172426482534,
+          296.86172426482534,
+          296.86172426482534
+        ]
+      },
+      "heat_current": {
+        "packs_battery_avg_k": [
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003
+        ],
+        "packs_battery_max_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "packs_plate_avg_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "packs_plate_max_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "tank_temperature_k": 298.15,
+        "compressor_speed_actual_rpm": 4000.0,
+        "q_evap_applied_w": 18009.272475241098,
+        "supply_delay_queue_k": [
+          292.24663518894215,
+          292.24663518894215,
+          292.24663518894215
+        ],
+        "return_delay_queue_k": [
+          296.86172426482534,
+          296.86172426482534,
+          296.86172426482534,
+          296.86172426482534
+        ]
+      }
+    },
+    "audit_runtime_s": 0.738589700020384
+  },
+  {
+    "case_id": "V6_high_flow",
+    "description": "High flow (pump 4500 rpm).",
+    "initial_compressor_rpm": 4000.0,
+    "initial_cluster_current_a": 560.0,
+    "diff": {
+      "packs_battery_avg_k": {
+        "max_abs": 0.0,
+        "mean_abs": 0.0,
+        "max_idx": 0
+      },
+      "packs_battery_max_k": {
+        "max_abs": 0.0,
+        "mean_abs": 0.0,
+        "max_idx": 0
+      },
+      "packs_plate_avg_k": {
+        "max_abs": 0.0,
+        "mean_abs": 0.0,
+        "max_idx": 0
+      },
+      "packs_plate_max_k": {
+        "max_abs": 0.0,
+        "mean_abs": 0.0,
+        "max_idx": 0
+      },
+      "tank_temperature_k": {
+        "delta": 0.0,
+        "abs": 0.0
+      },
+      "compressor_speed_actual_rpm": {
+        "delta": 0.0,
+        "abs": 0.0
+      },
+      "q_evap_applied_w": {
+        "delta": 0.0,
+        "abs": 0.0
+      },
+      "supply_delay_queue_k": {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "mean_abs": 0.0
+      },
+      "return_delay_queue_k": {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "mean_abs": 0.0
+      }
+    },
+    "raw": {
+      "legacy": {
+        "packs_battery_avg_k": [
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003
+        ],
+        "packs_battery_max_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "packs_plate_avg_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "packs_plate_max_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "tank_temperature_k": 298.15,
+        "compressor_speed_actual_rpm": 4000.0,
+        "q_evap_applied_w": 18009.272475241098,
+        "supply_delay_queue_k": [
+          292.24663518894215,
+          292.24663518894215,
+          292.24663518894215
+        ],
+        "return_delay_queue_k": [
+          296.86172426482534,
+          296.86172426482534,
+          296.86172426482534,
+          296.86172426482534
+        ]
+      },
+      "heat_current": {
+        "packs_battery_avg_k": [
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003
+        ],
+        "packs_battery_max_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "packs_plate_avg_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "packs_plate_max_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "tank_temperature_k": 298.15,
+        "compressor_speed_actual_rpm": 4000.0,
+        "q_evap_applied_w": 18009.272475241098,
+        "supply_delay_queue_k": [
+          292.24663518894215,
+          292.24663518894215,
+          292.24663518894215
+        ],
+        "return_delay_queue_k": [
+          296.86172426482534,
+          296.86172426482534,
+          296.86172426482534,
+          296.86172426482534
+        ]
+      }
+    },
+    "audit_runtime_s": 0.7407953999936581
+  },
+  {
+    "case_id": "V7_reverse_flow",
+    "description": "Reverse flow throughout (560 A, 4000 rpm).",
+    "initial_compressor_rpm": 4000.0,
+    "initial_cluster_current_a": 560.0,
+    "diff": {
+      "packs_battery_avg_k": {
+        "max_abs": 0.0,
+        "mean_abs": 0.0,
+        "max_idx": 0
+      },
+      "packs_battery_max_k": {
+        "max_abs": 0.0,
+        "mean_abs": 0.0,
+        "max_idx": 0
+      },
+      "packs_plate_avg_k": {
+        "max_abs": 0.0,
+        "mean_abs": 0.0,
+        "max_idx": 0
+      },
+      "packs_plate_max_k": {
+        "max_abs": 0.0,
+        "mean_abs": 0.0,
+        "max_idx": 0
+      },
+      "tank_temperature_k": {
+        "delta": 0.0,
+        "abs": 0.0
+      },
+      "compressor_speed_actual_rpm": {
+        "delta": 0.0,
+        "abs": 0.0
+      },
+      "q_evap_applied_w": {
+        "delta": 0.0,
+        "abs": 0.0
+      },
+      "supply_delay_queue_k": {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "mean_abs": 0.0
+      },
+      "return_delay_queue_k": {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "mean_abs": 0.0
+      }
+    },
+    "raw": {
+      "legacy": {
+        "packs_battery_avg_k": [
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003
+        ],
+        "packs_battery_max_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "packs_plate_avg_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "packs_plate_max_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "tank_temperature_k": 298.15,
+        "compressor_speed_actual_rpm": 4000.0,
+        "q_evap_applied_w": 18009.272475241098,
+        "supply_delay_queue_k": [
+          292.24663518894215,
+          292.24663518894215,
+          292.24663518894215
+        ],
+        "return_delay_queue_k": [
+          296.86172426482534,
+          296.86172426482534,
+          296.86172426482534,
+          296.86172426482534
+        ]
+      },
+      "heat_current": {
+        "packs_battery_avg_k": [
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003
+        ],
+        "packs_battery_max_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "packs_plate_avg_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "packs_plate_max_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "tank_temperature_k": 298.15,
+        "compressor_speed_actual_rpm": 4000.0,
+        "q_evap_applied_w": 18009.272475241098,
+        "supply_delay_queue_k": [
+          292.24663518894215,
+          292.24663518894215,
+          292.24663518894215
+        ],
+        "return_delay_queue_k": [
+          296.86172426482534,
+          296.86172426482534,
+          296.86172426482534,
+          296.86172426482534
+        ]
+      }
+    },
+    "audit_runtime_s": 0.7865597999771126
+  },
+  {
+    "case_id": "V8_flow_switch",
+    "description": "Forward 0-300 s, reverse 300-600 s.",
+    "initial_compressor_rpm": 4000.0,
+    "initial_cluster_current_a": 560.0,
+    "diff": {
+      "packs_battery_avg_k": {
+        "max_abs": 0.0,
+        "mean_abs": 0.0,
+        "max_idx": 0
+      },
+      "packs_battery_max_k": {
+        "max_abs": 0.0,
+        "mean_abs": 0.0,
+        "max_idx": 0
+      },
+      "packs_plate_avg_k": {
+        "max_abs": 0.0,
+        "mean_abs": 0.0,
+        "max_idx": 0
+      },
+      "packs_plate_max_k": {
+        "max_abs": 0.0,
+        "mean_abs": 0.0,
+        "max_idx": 0
+      },
+      "tank_temperature_k": {
+        "delta": 0.0,
+        "abs": 0.0
+      },
+      "compressor_speed_actual_rpm": {
+        "delta": 0.0,
+        "abs": 0.0
+      },
+      "q_evap_applied_w": {
+        "delta": 0.0,
+        "abs": 0.0
+      },
+      "supply_delay_queue_k": {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "mean_abs": 0.0
+      },
+      "return_delay_queue_k": {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "mean_abs": 0.0
+      }
+    },
+    "raw": {
+      "legacy": {
+        "packs_battery_avg_k": [
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003
+        ],
+        "packs_battery_max_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "packs_plate_avg_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "packs_plate_max_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "tank_temperature_k": 298.15,
+        "compressor_speed_actual_rpm": 4000.0,
+        "q_evap_applied_w": 18009.272475241098,
+        "supply_delay_queue_k": [
+          292.24663518894215,
+          292.24663518894215,
+          292.24663518894215
+        ],
+        "return_delay_queue_k": [
+          296.86172426482534,
+          296.86172426482534,
+          296.86172426482534,
+          296.86172426482534
+        ]
+      },
+      "heat_current": {
+        "packs_battery_avg_k": [
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003
+        ],
+        "packs_battery_max_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "packs_plate_avg_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "packs_plate_max_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "tank_temperature_k": 298.15,
+        "compressor_speed_actual_rpm": 4000.0,
+        "q_evap_applied_w": 18009.272475241098,
+        "supply_delay_queue_k": [
+          292.24663518894215,
+          292.24663518894215,
+          292.24663518894215
+        ],
+        "return_delay_queue_k": [
+          296.86172426482534,
+          296.86172426482534,
+          296.86172426482534,
+          296.86172426482534
+        ]
+      }
+    },
+    "audit_runtime_s": 0.7564660999923944
+  },
+  {
+    "case_id": "V9_regd",
+    "description": "AGC RegD current profile, forward flow.",
+    "initial_compressor_rpm": 4000.0,
+    "initial_cluster_current_a": 90.77151887999999,
+    "diff": {
+      "packs_battery_avg_k": {
+        "max_abs": 0.0,
+        "mean_abs": 0.0,
+        "max_idx": 0
+      },
+      "packs_battery_max_k": {
+        "max_abs": 0.0,
+        "mean_abs": 0.0,
+        "max_idx": 0
+      },
+      "packs_plate_avg_k": {
+        "max_abs": 0.0,
+        "mean_abs": 0.0,
+        "max_idx": 0
+      },
+      "packs_plate_max_k": {
+        "max_abs": 0.0,
+        "mean_abs": 0.0,
+        "max_idx": 0
+      },
+      "tank_temperature_k": {
+        "delta": 0.0,
+        "abs": 0.0
+      },
+      "compressor_speed_actual_rpm": {
+        "delta": 0.0,
+        "abs": 0.0
+      },
+      "q_evap_applied_w": {
+        "delta": 0.0,
+        "abs": 0.0
+      },
+      "supply_delay_queue_k": {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "mean_abs": 0.0
+      },
+      "return_delay_queue_k": {
+        "shape_match": true,
+        "max_abs": 0.0,
+        "mean_abs": 0.0
+      }
+    },
+    "raw": {
+      "legacy": {
+        "packs_battery_avg_k": [
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003
+        ],
+        "packs_battery_max_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "packs_plate_avg_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "packs_plate_max_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "tank_temperature_k": 298.15,
+        "compressor_speed_actual_rpm": 4000.0,
+        "q_evap_applied_w": 18009.272475241098,
+        "supply_delay_queue_k": [
+          292.24663518894215,
+          292.24663518894215,
+          292.24663518894215
+        ],
+        "return_delay_queue_k": [
+          296.86172426482534,
+          296.86172426482534,
+          296.86172426482534,
+          296.86172426482534
+        ]
+      },
+      "heat_current": {
+        "packs_battery_avg_k": [
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003,
+          298.15000000000003
+        ],
+        "packs_battery_max_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "packs_plate_avg_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "packs_plate_max_k": [
+          298.15,
+          298.15,
+          298.15,
+          298.15,
+          298.15
+        ],
+        "tank_temperature_k": 298.15,
+        "compressor_speed_actual_rpm": 4000.0,
+        "q_evap_applied_w": 18009.272475241098,
+        "supply_delay_queue_k": [
+          292.24663518894215,
+          292.24663518894215,
+          292.24663518894215
+        ],
+        "return_delay_queue_k": [
+          296.86172426482534,
+          296.86172426482534,
+          296.86172426482534,
+          296.86172426482534
+        ]
+      }
+    },
+    "audit_runtime_s": 0.7706140999798663
+  }
+]
