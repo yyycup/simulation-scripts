@@ -1,0 +1,116 @@
+[
+  {
+    "case_id": "C0_constant_load",
+    "description": "Constant load, forward flow, nominal mass flow.",
+    "runtime_s": 107.62638510001125,
+    "legacy": {
+      "steps": 120,
+      "max_abs_residual_battery_w": 2.231899998150766e-08,
+      "max_abs_residual_plate_w": 5.729816621169448e-10,
+      "max_abs_residual_loop_implicit_transport_w": 8189.0151024119805,
+      "max_abs_residual_system_w": 8189.015102416578
+    },
+    "heat_current": {
+      "steps": 120,
+      "max_abs_residual_battery_w": 2.1411324269138277e-08,
+      "max_abs_residual_plate_w": 5.020410753786564e-10,
+      "max_abs_residual_loop_implicit_transport_w": 7733.453083650243,
+      "max_abs_residual_system_w": 7733.453083654107
+    }
+  },
+  {
+    "case_id": "C1_current_step",
+    "description": "Current step 560 -> 800 A at 200 s.",
+    "runtime_s": 107.51956919999793,
+    "legacy": {
+      "steps": 120,
+      "max_abs_residual_battery_w": 1.8555510905571282e-08,
+      "max_abs_residual_plate_w": 5.456968210637569e-10,
+      "max_abs_residual_loop_implicit_transport_w": 8189.0151024119805,
+      "max_abs_residual_system_w": 8189.015102416578
+    },
+    "heat_current": {
+      "steps": 120,
+      "max_abs_residual_battery_w": 2.1411324269138277e-08,
+      "max_abs_residual_plate_w": 5.384208634495735e-10,
+      "max_abs_residual_loop_implicit_transport_w": 7733.453083650243,
+      "max_abs_residual_system_w": 7733.453083654107
+    }
+  },
+  {
+    "case_id": "C2_dynamic_regd",
+    "description": "AGC RegD current profile, forward flow.",
+    "runtime_s": 108.59793889999855,
+    "legacy": {
+      "steps": 120,
+      "max_abs_residual_battery_w": 2.1700543584302068e-08,
+      "max_abs_residual_plate_w": 4.911271389573812e-10,
+      "max_abs_residual_loop_implicit_transport_w": 8218.449719398945,
+      "max_abs_residual_system_w": 8218.4497193883
+    },
+    "heat_current": {
+      "steps": 120,
+      "max_abs_residual_battery_w": 1.8711943994276226e-08,
+      "max_abs_residual_plate_w": 6.148184183984995e-10,
+      "max_abs_residual_loop_implicit_transport_w": 7769.908903798593,
+      "max_abs_residual_system_w": 7769.90890381331
+    }
+  },
+  {
+    "case_id": "C3_reverse_flow",
+    "description": "Reverse coolant flow throughout.",
+    "runtime_s": 106.279512899986,
+    "legacy": {
+      "steps": 120,
+      "max_abs_residual_battery_w": 2.8849171940237284e-08,
+      "max_abs_residual_plate_w": 5.275069270282984e-10,
+      "max_abs_residual_loop_implicit_transport_w": 8188.805751938317,
+      "max_abs_residual_system_w": 8188.805751924109
+    },
+    "heat_current": {
+      "steps": 120,
+      "max_abs_residual_battery_w": 2.601882442831993e-08,
+      "max_abs_residual_plate_w": 4.4019543565809727e-10,
+      "max_abs_residual_loop_implicit_transport_w": 7733.208196199075,
+      "max_abs_residual_system_w": 7733.208196203157
+    }
+  },
+  {
+    "case_id": "C4_flow_switch",
+    "description": "Forward 0-300 s, reverse 300-600 s.",
+    "runtime_s": 106.74220039998181,
+    "legacy": {
+      "steps": 120,
+      "max_abs_residual_battery_w": 2.195884007960558e-08,
+      "max_abs_residual_plate_w": 4.383764462545514e-10,
+      "max_abs_residual_loop_implicit_transport_w": 8189.0151024119805,
+      "max_abs_residual_system_w": 8189.015102416578
+    },
+    "heat_current": {
+      "steps": 120,
+      "max_abs_residual_battery_w": 2.1411324269138277e-08,
+      "max_abs_residual_plate_w": 6.202753866091371e-10,
+      "max_abs_residual_loop_implicit_transport_w": 7733.453083650243,
+      "max_abs_residual_system_w": 7733.453083654107
+    }
+  },
+  {
+    "case_id": "C5_low_nominal_high_flow",
+    "description": "High coolant flow (pump 4500 rpm).",
+    "runtime_s": 105.56571609998355,
+    "legacy": {
+      "steps": 120,
+      "max_abs_residual_battery_w": 1.658554538153112e-08,
+      "max_abs_residual_plate_w": 6.566551746800542e-10,
+      "max_abs_residual_loop_implicit_transport_w": 12410.742526680864,
+      "max_abs_residual_system_w": 12410.742526687614
+    },
+    "heat_current": {
+      "steps": 120,
+      "max_abs_residual_battery_w": 2.3557731765322387e-08,
+      "max_abs_residual_plate_w": 5.784386303275824e-10,
+      "max_abs_residual_loop_implicit_transport_w": 11814.179102716475,
+      "max_abs_residual_system_w": 11814.179102724147
+    }
+  }
+]
