@@ -40,15 +40,15 @@ class FinalClusterPlantValidationTests(unittest.TestCase):
             [(4000.0, 4000.0), (2000.0, 4000.0), (4000.0, 4000.0)],
         )
 
-    def test_delay_gates_measure_exactly_fifteen_and_twenty_seconds(self) -> None:
+    def test_delay_gates_measure_exactly_five_seconds_each(self) -> None:
         self.assertIsNotNone(run_delay_gates)
         result = run_delay_gates()
 
         self.assertTrue(result["all_gates_pass"])
-        self.assertEqual(result["supply_delay_steps"], 3)
-        self.assertEqual(result["return_delay_steps"], 4)
-        self.assertEqual(result["measured_supply_delay_s"], 15.0)
-        self.assertEqual(result["measured_return_delay_s"], 20.0)
+        self.assertEqual(result["supply_delay_steps"], 1)
+        self.assertEqual(result["return_delay_steps"], 1)
+        self.assertEqual(result["measured_supply_delay_s"], 5.0)
+        self.assertEqual(result["measured_return_delay_s"], 5.0)
 
     def test_regd_case_uses_existing_zero_to_six_hundred_second_profile(self) -> None:
         self.assertIsNotNone(load_regd_case_currents)

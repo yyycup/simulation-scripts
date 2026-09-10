@@ -1,0 +1,103 @@
+{
+  "case_id": "V4_pump_step",
+  "description": "Pump step 3000 -> 4500 rpm at 200 s.",
+  "runtime_s": 35.25438150000991,
+  "steps": 24,
+  "temp_errors": {
+    "t_b_avg_k": {
+      "rmse_k": 0.006716237770821169,
+      "mae_k": 0.004932032729594009,
+      "max_abs_k": 0.014858936457073924
+    },
+    "t_b_max_k": {
+      "rmse_k": 0.01484647166482792,
+      "mae_k": 0.012798077267310267,
+      "max_abs_k": 0.02251282937470478
+    },
+    "t_p_avg_k": {
+      "rmse_k": 0.2809258077303041,
+      "mae_k": 0.2267372982893884,
+      "max_abs_k": 0.6545881416107022
+    },
+    "t_p_max_k": {
+      "rmse_k": 0.22100757640293187,
+      "mae_k": 0.16507775774166333,
+      "max_abs_k": 0.6399616509414727
+    },
+    "tank_temperature_k": {
+      "rmse_k": 0.5564807857544165,
+      "mae_k": 0.41196388247410454,
+      "max_abs_k": 1.2300801516730644
+    },
+    "t_supply_k": {
+      "rmse_k": 0.5927657623119124,
+      "mae_k": 0.4009337463677767,
+      "max_abs_k": 1.6817193882062043
+    },
+    "t_return_k": {
+      "rmse_k": 0.42783434155380384,
+      "mae_k": 0.34997748725565003,
+      "max_abs_k": 0.9200059750373839
+    },
+    "t_evap_out_k": {
+      "rmse_k": 0.5301352281565825,
+      "mae_k": 0.38064123299748803,
+      "max_abs_k": 1.2087247032571327
+    }
+  },
+  "cumulative": {
+    "q_gen_w": {
+      "e_legacy_j": 560965.6566527273,
+      "e_hc_j": 560947.0166811842,
+      "rel_diff_pct": 0.0033228364913331513
+    },
+    "q_bp_w": {
+      "e_legacy_j": 1254320.4528122232,
+      "e_hc_j": 1270641.6065106874,
+      "rel_diff_pct": 1.3011948949625793
+    },
+    "q_pf_w": {
+      "e_legacy_j": 1395724.4790982103,
+      "e_hc_j": 1422451.223222175,
+      "rel_diff_pct": 1.9149011516393946
+    },
+    "q_evap_cycle_w": {
+      "e_legacy_j": 1879941.2911713985,
+      "e_hc_j": 1894388.227691564,
+      "rel_diff_pct": 0.7684780683317823
+    },
+    "q_evap_applied_w": {
+      "e_legacy_j": 1954122.5243689003,
+      "e_hc_j": 1963821.437229697,
+      "rel_diff_pct": 0.49633084619035833
+    }
+  },
+  "all_states_finite": {
+    "legacy": true,
+    "heat_current": true
+  },
+  "solver_success_all_steps": {
+    "legacy": true,
+    "heat_current": true
+  },
+  "domain_invalid": {
+    "legacy": false,
+    "heat_current": false
+  },
+  "ledger": {
+    "legacy": {
+      "max_abs_residual_battery_w": 1.4449142327066511e-08,
+      "max_abs_residual_plate_w": 3.255991032347083e-10,
+      "max_abs_residual_loop_transport_w": 3021.540153236472,
+      "max_abs_residual_system_w": 3021.540153236834,
+      "max_abs_transport_flow_mismatch_w": 3021.5401532365013
+    },
+    "heat_current": {
+      "max_abs_residual_battery_w": 1.629996404517442e-08,
+      "max_abs_residual_plate_w": 5.165929906070232e-10,
+      "max_abs_residual_loop_transport_w": 1.0782059689518064e-09,
+      "max_abs_residual_system_w": 1.621128831175156e-08,
+      "max_abs_transport_flow_mismatch_w": 0.0
+    }
+  }
+}

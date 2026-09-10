@@ -123,7 +123,7 @@ class ClusterPlantV2Tests(unittest.TestCase):
         self.assertLess(abs(result["tank_energy_residual_j"]), 1e-8)
         self.assertFalse(result["cross_delay_energy_balance_is_modeled"])
 
-    def test_equilibrium_initialization_fills_three_and_four_step_queues(self) -> None:
+    def test_equilibrium_initialization_fills_one_step_queues(self) -> None:
         self.assertIsNotNone(ClusterPlant)
         plant = build_final_plant(
             4000.0,
@@ -143,12 +143,12 @@ class ClusterPlantV2Tests(unittest.TestCase):
         )
         expected_return = plant.return_delay.queue_values[0]
 
-        self.assertEqual(plant.supply_delay.delay_steps, 3)
-        self.assertEqual(plant.return_delay.delay_steps, 4)
+        self.assertEqual(plant.supply_delay.delay_steps, 1)
+        self.assertEqual(plant.return_delay.delay_steps, 1)
         self.assertEqual(len(set(plant.supply_delay.queue_values)), 1)
         self.assertEqual(
             plant.return_delay.queue_values,
-            (expected_return, expected_return, expected_return, expected_return),
+            (expected_return,),
         )
         self.assertNotEqual(expected_return, plant.tank.temperature_k)
         self.assertEqual(plant.supply_delay.queue_values[0], supply_initial)

@@ -29,10 +29,11 @@ and runs the full 9-step physical chain inside its own ``step()``:
     pump -> compressor_actuator -> cycle -> evap_dynamics
     -> HC_evap_outlet -> supply_delay -> HC_cluster -> return_delay -> tank
 
-**No frozen module is modified.** Only fresh instances are constructed
-and composed; every existing physical law (cycle solver, lag, delay,
-tank, pump characteristic, ColdPlateHeatCurrent sub-stepping) is used
-unchanged. External inputs are limited to
+**No frozen module is modified.** The cycle solver, actuator/evaporator
+lag, tank, pump characteristic and cold-plate laws are reused. The default
+retains fixed-time delays; an explicit reference flow in the builder opts
+into fixed-inventory mass transport for supply and return. External inputs
+are limited to
 
     I(t), N_pump_cmd(t), N_comp_cmd(t), T_amb(t), fan_rpm(t),
     d_flow(t), dt_s
@@ -48,6 +49,7 @@ TD3, controllers, or any predictive brain.
 
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass
 from typing import Mapping
 
@@ -72,6 +74,7 @@ from cluster_plant_v2.refrigeration import (
     EvaporatorThermalDynamics,
 )
 from cluster_plant_v2.thermal.evaporator_heat_current import EvaporatorHeatCurrent
+from cluster_plant_v2.thermal.coolant_mass_transport import CoolantMassTransport
 from cluster_plant_v2.thermal.heat_current_system import HeatCurrentCluster
 
 
@@ -109,8 +112,8 @@ class HeatCurrentPlant:
         refrigeration_cycle: ClosedR134aCycle,
         compressor_actuator: CompressorSpeedActuator,
         evaporator_dynamics: EvaporatorThermalDynamics,
-        supply_delay: CoolantTransportDelay,
-        return_delay: CoolantTransportDelay,
+        supply_delay: CoolantTransportDelay | CoolantMassTransport,
+        return_delay: CoolantTransportDelay | CoolantMassTransport,
         evaporator_heat_current: EvaporatorHeatCurrent | None = None,
     ) -> None:
         if cluster.hydraulic_mode != "header_network":
@@ -157,15 +160,20 @@ class HeatCurrentPlant:
             else evaporator_heat_current
         )
 
-        self.transport_state_count = (
-            supply_delay.dynamic_state_count
-            + return_delay.dynamic_state_count
+    @property
+    def transport_state_count(self) -> int:
+        return (
+            self.supply_delay.dynamic_state_count
+            + self.return_delay.dynamic_state_count
         )
-        self.dynamic_state_count = (
-            cluster.dynamic_state_count
-            + tank.dynamic_state_count
-            + compressor_actuator.dynamic_state_count
-            + evaporator_dynamics.dynamic_state_count
+
+    @property
+    def dynamic_state_count(self) -> int:
+        return (
+            self.cluster.dynamic_state_count
+            + self.tank.dynamic_state_count
+            + self.compressor_actuator.dynamic_state_count
+            + self.evaporator_dynamics.dynamic_state_count
             + self.transport_state_count
         )
 
@@ -216,15 +224,13 @@ class HeatCurrentPlant:
             initial_q_evap_applied_w=cycle["q_evaporator_w"],
             time_constant_s=evaporator_time_constant_s,
         )
-        evaporator_outlet = float(
-            tank_temperature
-            - evaporator_dynamics.q_evap_applied_w
-            / (
-                total_mass_flow
-                * tank.coolant_specific_heat_j_kg_k
-            )
+        evaporator_heat_current = EvaporatorHeatCurrent()
+        evaporator_outlet = evaporator_heat_current.outlet_temperature_from_applied_heat(
+            coolant_inlet_temperature_k=tank_temperature,
+            coolant_mass_flow_kg_s=total_mass_flow,
+            q_applied_w=evaporator_dynamics.q_evap_applied_w,
         )
-        initial_cluster_result = cluster.step(
+        initial_cluster_result = copy.deepcopy(cluster).step(
             dt_s=dt_s,
             cluster_current_a=initial_cluster_current_a,
             supply_temperature_k=evaporator_outlet,
@@ -253,6 +259,7 @@ class HeatCurrentPlant:
                 dt_s=dt_s,
                 initial_value=initial_return_temperature,
             ),
+            evaporator_heat_current=evaporator_heat_current,
         )
 
     def step(
@@ -359,13 +366,18 @@ class HeatCurrentPlant:
         )
         q_evap_applied = float(evaporator_result["q_evap_applied_w"])
         coolant_cp = self.tank.coolant_specific_heat_j_kg_k
-        evaporator_outlet = float(
-            tank_temperature_before
-            - q_evap_applied / (total_mass_flow * coolant_cp)
+        evaporator_outlet = self.evaporator_heat_current.outlet_temperature_from_applied_heat(
+            coolant_inlet_temperature_k=tank_temperature_before,
+            coolant_mass_flow_kg_s=total_mass_flow,
+            q_applied_w=q_evap_applied,
         )
 
         # 5. Supply transport delay (own queue, advanced by step())
-        cluster_supply = float(self.supply_delay.step(evaporator_outlet))
+        cluster_supply = float(
+            self.supply_delay.step(evaporator_outlet, mass_flow_kg_s=total_mass_flow)
+            if isinstance(self.supply_delay, CoolantMassTransport)
+            else self.supply_delay.step(evaporator_outlet)
+        )
 
         # 6. HC cluster (own cluster state)
         cluster_result = self.cluster.step(
@@ -379,7 +391,11 @@ class HeatCurrentPlant:
         cluster_return = float(cluster_result["return_temperature_k"])
 
         # 7. Return transport delay (own queue)
-        tank_return = float(self.return_delay.step(cluster_return))
+        tank_return = float(
+            self.return_delay.step(cluster_return, mass_flow_kg_s=total_mass_flow)
+            if isinstance(self.return_delay, CoolantMassTransport)
+            else self.return_delay.step(cluster_return)
+        )
 
         # 8. Coolant tank (own state)
         tank_result = self.tank.step(
@@ -462,25 +478,29 @@ class HeatCurrentPlant:
 def build_independent_hc_plant(
     *,
     legacy_plant,
-    n_packs: int = 5,
+    n_packs: int | None = None,
     cold_plate_factory=None,
+    transport_reference_mass_flow_kg_s: float | None = None,
 ) -> HeatCurrentPlant:
     """Construct a ``HeatCurrentPlant`` that is **independent** of the
     given legacy plant.
 
-    Every sub-object (pump, tank, refrigeration cycle, compressor
-    actuator, evaporator dynamics, supply/return delay) is a freshly
-    constructed instance seeded from the legacy plant's current state.
-    From this point on the two plants share **only** external inputs;
-    no mutable Python object is shared.
+    Copy every dynamic state and battery configuration, including nonuniform
+    delay histories. Only the cold-plate heat-transfer law is replaced.
+    Each component is copied so later configuration edits cannot leak across
+    plants either. A custom cold-plate factory retains its own parameters;
+    its zone layout must match the source to transfer wall temperatures.
 
-    Note: the hydraulic network is the same Python object (immutable
-    structure across both plants), because the network only carries
-    geometric resistance data and is not mutated at runtime. The
-    per-pack mass flow allocation is computed by each plant
-    independently from this shared network.
+    Passing transport_reference_mass_flow_kg_s opts into fixed-inventory
+    mass transport. Otherwise the original fixed-time delays are retained.
+    Supply/return mass is reference flow times the source delay duration.
     """
     legacy_cluster = legacy_plant.cluster
+    if n_packs is None:
+        n_packs = legacy_cluster.n_packs
+    if n_packs != legacy_cluster.n_packs:
+        raise ValueError("n_packs must match the source cluster for state transfer")
+    network = copy.deepcopy(legacy_plant.hydraulic_network)
     parallel_cluster = HeatCurrentCluster(
         n_packs=n_packs,
         branch_resistance_factors=np.asarray(
@@ -488,26 +508,24 @@ def build_independent_hc_plant(
         ),
         pack_config=None,
         hydraulic_mode=legacy_cluster.hydraulic_mode,
-        hydraulic_network=legacy_plant.hydraulic_network,
+        hydraulic_network=network,
         cold_plate_factory=cold_plate_factory,
     )
-    # State-mutating frozen classes are freshly instantiated and seeded
-    # from the legacy plant's *current* state values. After this point,
-    # every mutable attribute lives on the HC plant's own instance only:
-    #
-    #   CoolantTank.temperature_k             — mutable, fresh copy
-    #   CompressorSpeedActuator.speed_rpm     — mutable, fresh copy
-    #   EvaporatorThermalDynamics.q_evap_applied_w + buffer energy — mutable
-    #   CoolantTransportDelay._queue          — mutable, fresh copy
-    #
-    # Classes with zero dynamic state can be safely shared because they
-    # carry no mutable state across steps:
-    #
-    #   CoolantPump             (dynamic_state_count = 0; solve is pure)
-    #   ClosedR134aCycle        (dynamic_state_count = 0; solve is pure)
-    #
-    # The hydraulic network is also shared because it carries geometric
-    # resistance data only and is never mutated at runtime.
+    for source, target in zip(legacy_cluster.packs, parallel_cluster.packs):
+        target.battery = copy.deepcopy(source.battery)
+        old_plate, new_plate = source.cold_plate, target.cold_plate
+        if not np.array_equal(old_plate.zone_column_counts, new_plate.zone_column_counts):
+            raise ValueError("cold-plate zone layout must match for state transfer")
+        # Wall temperatures are states; instantaneous HC fluxes are recomputed
+        # on the first step rather than copied from the legacy LMTD law.
+        new_plate.plate_temperatures = old_plate.plate_temperatures.copy()
+        new_plate.initial_zone_energy_J = (
+            new_plate.zone_heat_capacities * new_plate.plate_temperatures
+        )
+        if cold_plate_factory is None:
+            new_plate.zone_heat_capacities = old_plate.zone_heat_capacities.copy()
+            new_plate.zone_areas = old_plate.zone_areas.copy()
+            new_plate.initial_zone_energy_J = old_plate.initial_zone_energy_J.copy()
     fresh_tank = CoolantTank(
         initial_temperature_k=legacy_plant.tank.temperature_k,
         volume_l=legacy_plant.tank.volume_m3 * 1000.0,
@@ -526,22 +544,34 @@ def build_independent_hc_plant(
         ),
         time_constant_s=legacy_plant.evaporator_dynamics.time_constant_s,
     )
+    fresh_evap_dynamics.evaporator_buffer_energy_j = (
+        legacy_plant.evaporator_dynamics.evaporator_buffer_energy_j
+    )
     fresh_supply_delay = CoolantTransportDelay(
         delay_s=legacy_plant.supply_delay.delay_s,
         dt_s=legacy_plant.supply_delay.dt_s,
-        initial_value=legacy_plant.supply_delay.queue_values[-1],
+        initial_queue_values=legacy_plant.supply_delay.queue_values,
     )
     fresh_return_delay = CoolantTransportDelay(
         delay_s=legacy_plant.return_delay.delay_s,
         dt_s=legacy_plant.return_delay.dt_s,
-        initial_value=legacy_plant.return_delay.queue_values[-1],
+        initial_queue_values=legacy_plant.return_delay.queue_values,
     )
+    if transport_reference_mass_flow_kg_s is not None:
+        fresh_supply_delay = CoolantMassTransport.from_fixed_delay(
+            fresh_supply_delay, reference_mass_flow_kg_s=transport_reference_mass_flow_kg_s,
+            coolant_specific_heat_j_kg_k=fresh_tank.coolant_specific_heat_j_kg_k,
+        )
+        fresh_return_delay = CoolantMassTransport.from_fixed_delay(
+            fresh_return_delay, reference_mass_flow_kg_s=transport_reference_mass_flow_kg_s,
+            coolant_specific_heat_j_kg_k=fresh_tank.coolant_specific_heat_j_kg_k,
+        )
     return HeatCurrentPlant(
         cluster=parallel_cluster,
-        hydraulic_network=legacy_plant.hydraulic_network,
-        pump=legacy_plant.pump,
+        hydraulic_network=network,
+        pump=copy.deepcopy(legacy_plant.pump),
         tank=fresh_tank,
-        refrigeration_cycle=legacy_plant.refrigeration_cycle,
+        refrigeration_cycle=copy.deepcopy(legacy_plant.refrigeration_cycle),
         compressor_actuator=fresh_actuator,
         evaporator_dynamics=fresh_evap_dynamics,
         supply_delay=fresh_supply_delay,

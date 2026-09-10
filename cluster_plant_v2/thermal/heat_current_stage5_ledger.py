@@ -67,7 +67,7 @@ def ledger_from_heat_current_plant(
         cluster_current_a=0.0,
         ambient_temperature_k=0.0,
         direction="forward",
-        total_mass_flow_kg_s=0.0,
+        total_mass_flow_kg_s=float(step_result["total_mass_flow_kg_s"]),
         tank_temperature_before_k=tank_temperature_before_k,
         q_evap_applied_w=float(step_result["q_evap_applied_w"]),
         q_evap_cycle_w=float(step_result["q_evap_cycle_w"]),

@@ -15,6 +15,8 @@ from cluster_plant_v2.hydraulics import CoolantTank
 from cluster_plant_v2.parameters import (
     COMPRESSOR_TIME_CONSTANT_S,
     EVAPORATOR_TIME_CONSTANT_S,
+    RETURN_TRANSPORT_DELAY_S,
+    SUPPLY_TRANSPORT_DELAY_S,
 )
 from cluster_plant_v2.plant import ClusterPlant
 from cluster_plant_v2.refrigeration import (
@@ -84,18 +86,20 @@ def load_regd_case_currents(
 
 def run_delay_gates() -> dict[str, object]:
     supply = CoolantTransportDelay(
-        delay_s=15.0, dt_s=5.0, initial_value=25.0
+        delay_s=SUPPLY_TRANSPORT_DELAY_S, dt_s=DT_S, initial_value=25.0
     )
-    supply_outputs = [supply.step(20.0) for _ in range(5)]
+    supply_outputs = [supply.step(20.0) for _ in range(supply.delay_steps + 2)]
     supply_change_index = next(
         index
         for index, value in enumerate(supply_outputs)
         if value == 20.0
     )
     return_delay = CoolantTransportDelay(
-        delay_s=20.0, dt_s=5.0, initial_value=25.0
+        delay_s=RETURN_TRANSPORT_DELAY_S, dt_s=DT_S, initial_value=25.0
     )
-    return_outputs = [return_delay.step(20.0) for _ in range(6)]
+    return_outputs = [
+        return_delay.step(20.0) for _ in range(return_delay.delay_steps + 2)
+    ]
     return_change_index = next(
         index
         for index, value in enumerate(return_outputs)
@@ -104,16 +108,16 @@ def run_delay_gates() -> dict[str, object]:
     result = {
         "supply_delay_steps": supply.delay_steps,
         "return_delay_steps": return_delay.delay_steps,
-        "measured_supply_delay_s": supply_change_index * 5.0,
-        "measured_return_delay_s": return_change_index * 5.0,
+        "measured_supply_delay_s": supply_change_index * DT_S,
+        "measured_return_delay_s": return_change_index * DT_S,
         "supply_outputs": "|".join(map(str, supply_outputs)),
         "return_outputs": "|".join(map(str, return_outputs)),
     }
     result["all_gates_pass"] = bool(
-        result["supply_delay_steps"] == 3
-        and result["return_delay_steps"] == 4
-        and result["measured_supply_delay_s"] == 15.0
-        and result["measured_return_delay_s"] == 20.0
+        result["supply_delay_steps"] == 1
+        and result["return_delay_steps"] == 1
+        and result["measured_supply_delay_s"] == SUPPLY_TRANSPORT_DELAY_S
+        and result["measured_return_delay_s"] == RETURN_TRANSPORT_DELAY_S
     )
     return result
 

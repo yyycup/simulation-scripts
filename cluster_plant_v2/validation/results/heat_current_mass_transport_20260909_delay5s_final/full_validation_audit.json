@@ -1,0 +1,84 @@
+{
+  "completed_cases": 9,
+  "csv_files_reread": 36,
+  "pipe_inventory_kg": [
+    4.498200000000132,
+    4.498200000000132
+  ],
+  "cases": [
+    {
+      "case_id": "V1_constant_nominal_forward",
+      "steps_per_backend": 120,
+      "max_abs_raw_system_residual_w": 2.275737642776221e-08,
+      "max_abs_mass_change_kg": 0.0,
+      "battery_average_rmse_vs_legacy_k": 0.06386888087073476,
+      "passed": true
+    },
+    {
+      "case_id": "V2_current_step",
+      "steps_per_backend": 120,
+      "max_abs_raw_system_residual_w": 2.275737642776221e-08,
+      "max_abs_mass_change_kg": 0.0,
+      "battery_average_rmse_vs_legacy_k": 0.06581782777433545,
+      "passed": true
+    },
+    {
+      "case_id": "V3_compressor_step",
+      "steps_per_backend": 120,
+      "max_abs_raw_system_residual_w": 2.1886080503463745e-08,
+      "max_abs_mass_change_kg": 0.0,
+      "battery_average_rmse_vs_legacy_k": 0.045339505210812904,
+      "passed": true
+    },
+    {
+      "case_id": "V4_pump_step",
+      "steps_per_backend": 120,
+      "max_abs_raw_system_residual_w": 2.2443771285907133e-08,
+      "max_abs_mass_change_kg": 0.0,
+      "battery_average_rmse_vs_legacy_k": 0.045317521238081034,
+      "passed": true
+    },
+    {
+      "case_id": "V5_low_flow",
+      "steps_per_backend": 120,
+      "max_abs_raw_system_residual_w": 2.0670285039159353e-08,
+      "max_abs_mass_change_kg": 0.0,
+      "battery_average_rmse_vs_legacy_k": 0.06528672638584544,
+      "passed": true
+    },
+    {
+      "case_id": "V6_high_flow",
+      "steps_per_backend": 120,
+      "max_abs_raw_system_residual_w": 1.898590085147589e-08,
+      "max_abs_mass_change_kg": 0.0,
+      "battery_average_rmse_vs_legacy_k": 0.07547706231091442,
+      "passed": true
+    },
+    {
+      "case_id": "V7_reverse_flow",
+      "steps_per_backend": 120,
+      "max_abs_raw_system_residual_w": 1.861809550973703e-08,
+      "max_abs_mass_change_kg": 0.0,
+      "battery_average_rmse_vs_legacy_k": 0.06395142064100302,
+      "passed": true
+    },
+    {
+      "case_id": "V8_flow_switch",
+      "steps_per_backend": 120,
+      "max_abs_raw_system_residual_w": 2.275737642776221e-08,
+      "max_abs_mass_change_kg": 0.0,
+      "battery_average_rmse_vs_legacy_k": 0.06332115991306721,
+      "passed": true
+    },
+    {
+      "case_id": "V9_regd",
+      "steps_per_backend": 120,
+      "max_abs_raw_system_residual_w": 2.5851136342680547e-08,
+      "max_abs_mass_change_kg": 0.0,
+      "battery_average_rmse_vs_legacy_k": 0.0632178871920489,
+      "passed": true
+    }
+  ],
+  "max_abs_raw_system_residual_w": 2.5851136342680547e-08,
+  "max_abs_mass_change_kg": 0.0
+}

@@ -5,8 +5,8 @@ Continuous-time dynamics (all temperatures in kelvin):
 - compressor speed actuator: first-order lag, ``COMPRESSOR_TIME_CONSTANT_S``
 - evaporator applied cooling: first-order lag toward a quadratic cycle
   surrogate, ``EVAPORATOR_TIME_CONSTANT_S``
-- supply/return transport delays: chains of 5 s first-order lags (3 and 4
-  lags reproduce the frozen 15 s / 20 s delays)
+- supply/return transport delays: one 5 s first-order lag on each side,
+  matching the selected literature-anchored Plant delays
 - cluster thermal chain: lumped battery capacitance -> lumped cold-plate
   capacitance -> well-mixed coolant
 - tank: well-mixed mixing of the delayed return stream

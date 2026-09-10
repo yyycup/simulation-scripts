@@ -1,0 +1,109 @@
+{
+  "case_id": "V5_low_flow",
+  "description": "Low flow (pump 2400 rpm).",
+  "runtime_s": 200.55324139998993,
+  "steps": 120,
+  "temp_errors": {
+    "t_b_avg_k": {
+      "rmse_k": 0.023085035996067208,
+      "mae_k": 0.019811803867123483,
+      "max_abs_k": 0.0368770920474617
+    },
+    "t_b_max_k": {
+      "rmse_k": 0.1820544178945692,
+      "mae_k": 0.16533509877624417,
+      "max_abs_k": 0.25513729245454897
+    },
+    "t_p_avg_k": {
+      "rmse_k": 0.1633327146659077,
+      "mae_k": 0.116667958516967,
+      "max_abs_k": 0.7062530960045592
+    },
+    "t_p_max_k": {
+      "rmse_k": 0.38410880724877444,
+      "mae_k": 0.3683232372993236,
+      "max_abs_k": 0.7274504395486474
+    },
+    "tank_temperature_k": {
+      "rmse_k": 1.2389944452599426,
+      "mae_k": 1.195124972684369,
+      "max_abs_k": 2.136548894388511
+    },
+    "t_supply_k": {
+      "rmse_k": 1.1589934592546849,
+      "mae_k": 1.0776736102539337,
+      "max_abs_k": 2.883931877151838
+    },
+    "t_return_k": {
+      "rmse_k": 1.1320322532222824,
+      "mae_k": 1.112706763455249,
+      "max_abs_k": 1.6295288193033457
+    },
+    "t_evap_out_k": {
+      "rmse_k": 1.0314967603575602,
+      "mae_k": 0.9837722306876491,
+      "max_abs_k": 1.9992601119173514
+    }
+  },
+  "cumulative": {
+    "q_gen_w": {
+      "e_legacy_j": 3038997.1541174985,
+      "e_hc_j": 3039421.8503281623,
+      "rel_diff_pct": 0.013974880170201877
+    },
+    "q_bp_w": {
+      "e_legacy_j": 7480453.998285436,
+      "e_hc_j": 7524324.146714913,
+      "rel_diff_pct": 0.586463715163972
+    },
+    "q_pf_w": {
+      "e_legacy_j": 7704544.279639281,
+      "e_hc_j": 7751284.859102668,
+      "rel_diff_pct": 0.6066624808284605
+    },
+    "q_evap_cycle_w": {
+      "e_legacy_j": 8218707.311955097,
+      "e_hc_j": 8481501.54932988,
+      "rel_diff_pct": 3.197513032159178
+    },
+    "q_evap_applied_w": {
+      "e_legacy_j": 8421605.036130387,
+      "e_hc_j": 8667321.058235016,
+      "rel_diff_pct": 2.917686367983977
+    }
+  },
+  "all_states_finite": {
+    "legacy": true,
+    "heat_current": true
+  },
+  "solver_success_all_steps": {
+    "legacy": true,
+    "heat_current": true
+  },
+  "domain_invalid": {
+    "legacy": false,
+    "heat_current": false
+  },
+  "ledger": {
+    "legacy": {
+      "max_abs_residual_battery_w": 1.937223714776337e-08,
+      "max_abs_residual_plate_w": 4.802132025361061e-10,
+      "max_abs_residual_loop_transport_w": 1.0331859812140465e-09,
+      "max_abs_residual_system_w": 1.873411292763194e-08,
+      "max_abs_transport_flow_mismatch_w": 0.0
+    },
+    "heat_current": {
+      "max_abs_residual_battery_w": 2.2466338123194873e-08,
+      "max_abs_residual_plate_w": 6.275513442233205e-10,
+      "max_abs_residual_loop_transport_w": 1.1289102985756472e-09,
+      "max_abs_residual_system_w": 2.2793074094806798e-08,
+      "max_abs_transport_flow_mismatch_w": 0.0
+    }
+  },
+  "hc_transport_model": "fixed_inventory_mass_transport",
+  "hc_raw_energy_gate_passed": true,
+  "pipe_inventory_kg": {
+    "supply": 13.494600000000396,
+    "return": 17.99280000000053
+  }
+}

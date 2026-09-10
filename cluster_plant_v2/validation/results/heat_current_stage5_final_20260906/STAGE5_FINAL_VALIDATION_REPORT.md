@@ -1,5 +1,11 @@
 # Stage 5 Final Validation — System-Level Heat-Current Model
 
+> **已被 v2 取代（2026-09-10）**：本报告保留为 15/20 s 固定时间 FIFO 的历史记录。
+> 其中对 kW 级 `R_loop` 的“未暴露冷板冷却液储能”归因不成立；根因是输运队列
+> 储能账本遗漏了质量因子。当前结论、5/5 s 延迟、质量守恒输运和修正后的能量闭合
+> 请以 [v2 最终验证报告](../heat_current_mass_transport_20260909_delay5s_final/STAGE5_FINAL_VALIDATION_REPORT.md)
+> 为准。旧标签 `heat-current-final-v1` 保留，不移动。
+
 **Date**: 2026-09-06
 **Branch**: `heat-current`
 **Tag (after commit)**: `heat-current-final-v1` (annotated, local — not pushed)

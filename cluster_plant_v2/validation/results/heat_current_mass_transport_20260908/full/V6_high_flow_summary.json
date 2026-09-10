@@ -1,0 +1,109 @@
+{
+  "case_id": "V6_high_flow",
+  "description": "High flow (pump 4500 rpm).",
+  "runtime_s": 206.74618799996097,
+  "steps": 120,
+  "temp_errors": {
+    "t_b_avg_k": {
+      "rmse_k": 0.1413228924163688,
+      "mae_k": 0.12926917236447272,
+      "max_abs_k": 0.19928482408204218
+    },
+    "t_b_max_k": {
+      "rmse_k": 0.05818775015586138,
+      "mae_k": 0.054323919726195886,
+      "max_abs_k": 0.07638944121902114
+    },
+    "t_p_avg_k": {
+      "rmse_k": 0.3358279946841498,
+      "mae_k": 0.29990209748842794,
+      "max_abs_k": 1.06904852267985
+    },
+    "t_p_max_k": {
+      "rmse_k": 0.1692319909402606,
+      "mae_k": 0.12443102898094197,
+      "max_abs_k": 0.8298378180357417
+    },
+    "tank_temperature_k": {
+      "rmse_k": 0.36158886530250484,
+      "mae_k": 0.2405856412823127,
+      "max_abs_k": 2.2241706812926054
+    },
+    "t_supply_k": {
+      "rmse_k": 0.3849290050506502,
+      "mae_k": 0.2431259309601136,
+      "max_abs_k": 1.9944406859738706
+    },
+    "t_return_k": {
+      "rmse_k": 0.2328518233008552,
+      "mae_k": 0.21144361268552483,
+      "max_abs_k": 0.8287442152361564
+    },
+    "t_evap_out_k": {
+      "rmse_k": 0.35000574461201267,
+      "mae_k": 0.2240583404522809,
+      "max_abs_k": 2.188657976075092
+    }
+  },
+  "cumulative": {
+    "q_gen_w": {
+      "e_legacy_j": 3031629.733001222,
+      "e_hc_j": 3023882.832739335,
+      "rel_diff_pct": 0.25553583201658625
+    },
+    "q_bp_w": {
+      "e_legacy_j": 7880910.2789535625,
+      "e_hc_j": 8121357.433400779,
+      "rel_diff_pct": 3.0510073828570907
+    },
+    "q_pf_w": {
+      "e_legacy_j": 8104532.0345157785,
+      "e_hc_j": 8356918.198343084,
+      "rel_diff_pct": 3.1141361740867617
+    },
+    "q_evap_cycle_w": {
+      "e_legacy_j": 9102773.34636562,
+      "e_hc_j": 9124721.62555185,
+      "rel_diff_pct": 0.24111639772941548
+    },
+    "q_evap_applied_w": {
+      "e_legacy_j": 9256070.628686486,
+      "e_hc_j": 9274766.02801196,
+      "rel_diff_pct": 0.20197986894713368
+    }
+  },
+  "all_states_finite": {
+    "legacy": true,
+    "heat_current": true
+  },
+  "solver_success_all_steps": {
+    "legacy": true,
+    "heat_current": true
+  },
+  "domain_invalid": {
+    "legacy": false,
+    "heat_current": false
+  },
+  "ledger": {
+    "legacy": {
+      "max_abs_residual_battery_w": 1.658554538153112e-08,
+      "max_abs_residual_plate_w": 6.566551746800542e-10,
+      "max_abs_residual_loop_transport_w": 2.217348082922399e-09,
+      "max_abs_residual_system_w": 1.6353624232579023e-08,
+      "max_abs_transport_flow_mismatch_w": 0.0
+    },
+    "heat_current": {
+      "max_abs_residual_battery_w": 2.5358531274832785e-08,
+      "max_abs_residual_plate_w": 4.729372449219227e-10,
+      "max_abs_residual_loop_transport_w": 1.171883923234418e-09,
+      "max_abs_residual_system_w": 2.53370444625034e-08,
+      "max_abs_transport_flow_mismatch_w": 0.0
+    }
+  },
+  "hc_transport_model": "fixed_inventory_mass_transport",
+  "hc_raw_energy_gate_passed": true,
+  "pipe_inventory_kg": {
+    "supply": 13.494600000000396,
+    "return": 17.99280000000053
+  }
+}

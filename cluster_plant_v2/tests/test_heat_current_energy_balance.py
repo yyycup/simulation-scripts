@@ -9,8 +9,8 @@ precision as the existing Stage 8C3 local gates:
 * Cold plate: ``Q_bp - dE_plate/dt - Q_pf ≈ 0``                (≤ 1e-9 W)
 * Loop:       ``Q_pf - Q_evap_applied - dE_coolant_total/dt`` is reported
               as the **implicit-transport residual** (``R_loop``); it is
-              *not* expected to vanish because the cluster-internal
-              coolant segments are folded in.
+              expected to vanish at the reference flow. Off-reference
+              flow exposes the fixed-time FIFO model discrepancy.
 
 The cumulative residual is checked for finiteness only; per-case
 absolute thresholds live in ``validate_heat_current_stage4.py``.
@@ -29,7 +29,7 @@ from cluster_plant_v2.thermal import (
 from cluster_plant_v2.thermal.heat_current_energy_balance import (
     EnergyLedgerStep,
     cumulative_residual_j,
-    initial_energy_snapshot,
+    initial_energy_snapshot as _initial_energy_snapshot,
     ledger_from_heat_current,
     ledger_from_legacy,
 )
@@ -38,6 +38,15 @@ from cluster_plant_v2.validation.validate_final_cluster_plant import (
     DT_S,
     build_final_plant,
 )
+
+
+
+def initial_energy_snapshot(plant, *, is_heat_current):
+    flow = plant.pump.solve_operating_point(3500.0, plant.hydraulic_network)["total_mass_flow_kg_s"]
+    return _initial_energy_snapshot(
+        plant, is_heat_current=is_heat_current,
+        transport_reference_mass_flow_kg_s=flow,
+    )
 
 
 def _step_once(legacy, parallel):
@@ -117,8 +126,7 @@ class EnergyLedgerLegacyTests(unittest.TestCase):
         ledger, _ = ledger_from_legacy(
             self.legacy, dt_s=DT_S, result=out, prev_energy=prev,
         )
-        self.assertTrue(np.isfinite(ledger.residual_loop_implicit_transport_w))
-        # It is allowed to be non-zero; only finiteness is required.
+        self.assertLess(abs(ledger.residual_loop_implicit_transport_w), 1e-6)
 
     def test_all_q_fields_finite(self) -> None:
         prev = initial_energy_snapshot(self.legacy, is_heat_current=False)

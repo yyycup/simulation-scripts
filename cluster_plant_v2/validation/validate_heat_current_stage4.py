@@ -188,6 +188,7 @@ def _ledger_row(
             ledger.residual_loop_implicit_transport_w
         ),
         "residual_system_w": ledger.residual_system_w,
+        "transport_flow_mismatch_w": ledger.transport_flow_mismatch_w,
     }
 
 
@@ -202,8 +203,17 @@ def _run_one(
     )
     parallel = build_parallel_system(legacy_plant=plant)
 
-    prev_leg = initial_energy_snapshot(plant, is_heat_current=False)
-    prev_hc = initial_energy_snapshot(parallel, is_heat_current=True)
+    reference_flow = plant.pump.solve_operating_point(
+        spec.pump_rpm, plant.hydraulic_network
+    )["total_mass_flow_kg_s"]
+    prev_leg = initial_energy_snapshot(
+        plant, is_heat_current=False,
+        transport_reference_mass_flow_kg_s=reference_flow,
+    )
+    prev_hc = initial_energy_snapshot(
+        parallel, is_heat_current=True,
+        transport_reference_mass_flow_kg_s=reference_flow,
+    )
 
     leg_rows: list[dict[str, object]] = []
     hc_rows: list[dict[str, object]] = []
@@ -342,17 +352,18 @@ def _render_markdown(summaries: list[dict[str, object]]) -> str:
         "and 1e-9 W (plate). ``R_loop`` is the loop-balance residual"
     )
     lines.append(
-        "``Q_pf - Q_evap_applied - dE_coolant_total/dt``; it is *not*"
+        "``Q_pf - Q_evap_applied - dE_coolant_total/dt``. Pipe storage uses"
     )
     lines.append(
-        "expected to vanish because the cluster-internal coolant segments"
+        "fixed equivalent mass from the explicit reference flow and delay."
     )
     lines.append(
-        "are folded into the implicit-transport residual together with the"
+        "At reference flow it should close numerically. At other flows,"
     )
     lines.append(
-        "unmodeled transport terms of the Stage 4 spec."
+        "the raw residual retains the fixed-time FIFO model discrepancy;"
     )
+    lines.append("``transport_flow_mismatch_w`` in the CSV reports that term separately.")
     lines.append("")
     return "\n".join(lines) + "\n"
 

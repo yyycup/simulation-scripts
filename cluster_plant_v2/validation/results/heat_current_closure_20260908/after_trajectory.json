@@ -1,0 +1,110 @@
+[
+  {
+    "tank_temperature_after_k": 296.3464139707554,
+    "evaporator_outlet_temperature_k": 292.24663518894215,
+    "cluster_supply_temperature_k": 292.24663518894215,
+    "cluster_return_temperature_k": 296.6646352466213,
+    "q_evap_applied_w": 18009.272475241098,
+    "q_cluster_to_fluid_w": 13477.90105828118,
+    "q_gen_w": 4138.4568979527
+  },
+  {
+    "tank_temperature_after_k": 297.06784838245335,
+    "evaporator_outlet_temperature_k": 290.4713993513439,
+    "cluster_supply_temperature_k": 292.24663518894215,
+    "cluster_return_temperature_k": 295.4451629361628,
+    "q_evap_applied_w": 17922.78513413571,
+    "q_cluster_to_fluid_w": 9757.682197010228,
+    "q_gen_w": 4361.223656838714
+  },
+  {
+    "tank_temperature_after_k": 296.77927461777415,
+    "evaporator_outlet_temperature_k": 291.2069567591294,
+    "cluster_supply_temperature_k": 292.24663518894215,
+    "cluster_return_temperature_k": 295.0221652002001,
+    "q_evap_applied_w": 17879.7004031648,
+    "q_cluster_to_fluid_w": 8467.251785341876,
+    "q_gen_w": 4523.0136196694275
+  },
+  {
+    "tank_temperature_after_k": 296.8947041236458,
+    "evaporator_outlet_temperature_k": 290.9355342403191,
+    "cluster_supply_temperature_k": 292.24663518894215,
+    "cluster_return_temperature_k": 294.91317473758164,
+    "q_evap_applied_w": 17827.377453452456,
+    "q_cluster_to_fluid_w": 8134.756843673698,
+    "q_gen_w": 4639.945810484114
+  },
+  {
+    "tank_temperature_after_k": 296.5726076958115,
+    "evaporator_outlet_temperature_k": 291.0645083947976,
+    "cluster_supply_temperature_k": 290.4713993513439,
+    "cluster_return_temperature_k": 294.4395577979118,
+    "q_evap_applied_w": 17786.05707513437,
+    "q_cluster_to_fluid_w": 12105.578593975752,
+    "q_gen_w": 9316.744957692299
+  },
+  {
+    "tank_temperature_after_k": 294.9941850323032,
+    "evaporator_outlet_temperature_k": 290.7595552232897,
+    "cluster_supply_temperature_k": 291.2069567591294,
+    "cluster_return_temperature_k": 294.2505567082551,
+    "q_evap_applied_w": 17733.758498953463,
+    "q_cluster_to_fluid_w": 9285.047179663217,
+    "q_gen_w": 9551.37076176656
+  },
+  {
+    "tank_temperature_after_k": 295.04315032612277,
+    "evaporator_outlet_temperature_k": 290.3610152035148,
+    "cluster_supply_temperature_k": 290.9355342403191,
+    "cluster_return_temperature_k": 294.0355324798673,
+    "q_evap_applied_w": 17667.893765099525,
+    "q_cluster_to_fluid_w": 11821.37534178332,
+    "q_gen_w": 9724.274146482803
+  },
+  {
+    "tank_temperature_after_k": 294.8156930461758,
+    "evaporator_outlet_temperature_k": 290.42481127126234,
+    "cluster_supply_temperature_k": 291.0645083947976,
+    "cluster_return_temperature_k": 293.86197030742073,
+    "q_evap_applied_w": 17611.338847430467,
+    "q_cluster_to_fluid_w": 10667.698726913099,
+    "q_gen_w": 9853.754693001005
+  },
+  {
+    "tank_temperature_after_k": 294.15745636171374,
+    "evaporator_outlet_temperature_k": 290.276046832706,
+    "cluster_supply_temperature_k": 290.7595552232897,
+    "cluster_return_temperature_k": 293.7543260886504,
+    "q_evap_applied_w": 17311.25557547155,
+    "q_cluster_to_fluid_w": 11420.106634391575,
+    "q_gen_w": 9953.204851312084
+  },
+  {
+    "tank_temperature_after_k": 294.3203819681611,
+    "evaporator_outlet_temperature_k": 289.71924371139437,
+    "cluster_supply_temperature_k": 290.3610152035148,
+    "cluster_return_temperature_k": 293.3700420171206,
+    "q_evap_applied_w": 16924.453993793948,
+    "q_cluster_to_fluid_w": 11474.469541088869,
+    "q_gen_w": 10031.302390824165
+  },
+  {
+    "tank_temperature_after_k": 293.82189536364695,
+    "evaporator_outlet_temperature_k": 289.98003222249906,
+    "cluster_supply_temperature_k": 290.42481127126234,
+    "cluster_return_temperature_k": 293.5275905304581,
+    "q_evap_applied_w": 16551.268579288575,
+    "q_cluster_to_fluid_w": 11831.980340414104,
+    "q_gen_w": 10094.449825044896
+  },
+  {
+    "tank_temperature_after_k": 293.8920265152511,
+    "evaporator_outlet_temperature_k": 289.57755864283774,
+    "cluster_supply_temperature_k": 290.276046832706,
+    "cluster_return_temperature_k": 293.4224286004343,
+    "q_evap_applied_w": 16185.137402178461,
+    "q_cluster_to_fluid_w": 11998.251924904194,
+    "q_gen_w": 10149.188890267149
+  }
+]

@@ -3,8 +3,8 @@
 Cluster Plant V2 data flow for each step:
 
 Tank -> Pump -> Hydraulic Network -> Compressor Actuator -> R134a Cycle
-     -> Evaporator Dynamics -> 15 s Supply Delay -> 5-Pack Cluster
-     -> 20 s Return Delay -> Tank -> Diagnostics
+     -> Evaporator Dynamics -> 5 s Supply Delay -> 5-Pack Cluster
+     -> 5 s Return Delay -> Tank -> Diagnostics
 
 The complete advance order is intentionally visible in ``ClusterPlant.step``.
 Component equations live in ``cluster.py``, ``hydraulics.py``, and

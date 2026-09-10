@@ -249,9 +249,15 @@ def _pump_cmd_at(spec: CaseSpec, time_s: float) -> float:
     )
 
 
-def _build_hc_plant(legacy: ClusterPlant) -> HeatCurrentPlant:
+def _build_hc_plant(legacy: ClusterPlant, *, conservative_transport=False) -> HeatCurrentPlant:
     """Build an independent HC plant matching the legacy's initial state."""
-    return build_independent_hc_plant(legacy_plant=legacy)
+    # A single nominal inventory across V1-V9, independent of case pump speed.
+    reference_flow = (legacy.pump.solve_operating_point(
+        PUMP_SPEED_RPM, legacy.hydraulic_network
+    )["total_mass_flow_kg_s"] if conservative_transport else None)
+    return build_independent_hc_plant(
+        legacy_plant=legacy, transport_reference_mass_flow_kg_s=reference_flow,
+    )
 
 
 def _ledger_row(
@@ -281,6 +287,7 @@ def _ledger_row(
             ledger.residual_loop_implicit_transport_w
         ),
         "residual_system_w": ledger.residual_system_w,
+        "transport_flow_mismatch_w": ledger.transport_flow_mismatch_w,
     }
 
 
@@ -339,7 +346,7 @@ def _hc_row(
 
 
 def _run_one(
-    spec: CaseSpec, currents: np.ndarray
+    spec: CaseSpec, currents: np.ndarray, *, conservative_transport=False
 ) -> tuple[
     list[dict[str, object]],
     list[dict[str, object]],
@@ -353,10 +360,19 @@ def _run_one(
         initial_cluster_current_a=float(currents[0]),
         direction=_direction_at(spec, 0.0),
     )
-    hc = _build_hc_plant(legacy)
+    hc = _build_hc_plant(legacy, conservative_transport=conservative_transport)
 
-    prev_leg = initial_energy_snapshot(legacy, is_heat_current=False)
-    prev_hc = initial_energy_snapshot(hc, is_heat_current=True)
+    reference_flow = legacy.pump.solve_operating_point(
+        _pump_cmd_at(spec, 0.0), legacy.hydraulic_network
+    )["total_mass_flow_kg_s"]
+    prev_leg = initial_energy_snapshot(
+        legacy, is_heat_current=False,
+        transport_reference_mass_flow_kg_s=reference_flow,
+    )
+    prev_hc = initial_energy_snapshot(
+        hc, is_heat_current=True,
+        transport_reference_mass_flow_kg_s=reference_flow,
+    )
 
     leg_rows: list[dict[str, object]] = []
     hc_rows: list[dict[str, object]] = []
@@ -417,7 +433,15 @@ def _run_one(
         leg_ledger = replace(leg_ledger, time_s=(step_index + 1) * DT_S)
         hc_ledger = replace(hc_ledger, time_s=(step_index + 1) * DT_S)
         leg_ledger_rows.append(_ledger_row(spec, step_index, leg_ledger))
-        hc_ledger_rows.append(_ledger_row(spec, step_index, hc_ledger))
+        hc_row = _ledger_row(spec, step_index, hc_ledger)
+        if conservative_transport:
+            hc_row.update({
+                "supply_mass_kg": hc.supply_delay.stored_mass_kg,
+                "return_mass_kg": hc.return_delay.stored_mass_kg,
+                "supply_energy_j": hc.supply_delay.stored_energy_j,
+                "return_energy_j": hc.return_delay.stored_energy_j,
+            })
+        hc_ledger_rows.append(hc_row)
 
     runtime_s = perf_counter() - start
     return leg_rows, hc_rows, runtime_s, leg_ledger_rows, hc_ledger_rows
@@ -492,6 +516,9 @@ def _summarize(
             "max_abs_residual_system_w": _max_abs(
                 leg_ledger_rows, "residual_system_w"
             ),
+            "max_abs_transport_flow_mismatch_w": _max_abs(
+                leg_ledger_rows, "transport_flow_mismatch_w"
+            ),
         },
         "heat_current": {
             "max_abs_residual_battery_w": _max_abs(
@@ -505,6 +532,9 @@ def _summarize(
             ),
             "max_abs_residual_system_w": _max_abs(
                 hc_ledger_rows, "residual_system_w"
+            ),
+            "max_abs_transport_flow_mismatch_w": _max_abs(
+                hc_ledger_rows, "transport_flow_mismatch_w"
             ),
         },
     }
@@ -625,16 +655,18 @@ def _render_markdown(summaries: list[dict[str, object]]) -> str:
     lines.append("")
     lines.append("## Energy-conservation residuals (max |·| over 120 steps)")
     lines.append("")
-    lines.append("Only heat_current residuals are shown for battery/plate "
-                 "(legacy is included for completeness). Q_transport_implicit = "
-                 "residual_loop_implicit_transport_w (= Q_pf − Q_evap_applied − "
-                 "dE_coolant_total/dt), which folds un-exposed cluster-internal "
-                 "coolant storage — a structural, model-boundary term, NOT a "
-                 "system energy error.")
+    lines.append("Time-FIFO storage uses equivalent mass defined by the reference "
+                 "flow and delay; mass-transport storage reads actual parcel energies. "
+                 "R_loop (= Q_pf − Q_evap_applied − "
+                 "dE_coolant_total/dt) and R_system are raw energy residuals. "
+                 "At reference flow they should close numerically. Off-reference "
+                 "flow exposes the fixed-time FIFO model discrepancy, reported "
+                 "separately without subtracting it from the raw residuals. "
+                 "Mass transport must close the raw residual at every flow.")
     lines.append("")
     lines.append("| case | backend | R_battery (W) | R_plate (W) |"
-                 " Q_transport_implicit (W) | R_system (W) |")
-    lines.append("|---|---|---|---|---|---|")
+                 " R_loop (W) | R_system (W) | FIFO flow mismatch (W) |")
+    lines.append("|---|---|---|---|---|---|---|")
     for s in summaries:
         for backend in ("legacy", "heat_current"):
             a = s["ledger"][backend]
@@ -644,6 +676,7 @@ def _render_markdown(summaries: list[dict[str, object]]) -> str:
                 f" {a['max_abs_residual_plate_w']:.3e} |"
                 f" {a['max_abs_residual_loop_transport_w']:.3e} |"
                 f" {a['max_abs_residual_system_w']:.3e} |"
+                f" {a['max_abs_transport_flow_mismatch_w']:.3e} |"
             )
     lines.append("")
     return "\n".join(lines) + "\n"
@@ -784,12 +817,18 @@ def main(argv: list[str] | None = None) -> int:
         help="skip matplotlib figure rendering",
     )
     parser.add_argument(
+        "--conservative-transport", action="store_true",
+        help="use fixed-inventory mass transport in HC; retain legacy as reference",
+    )
+    parser.add_argument(
         "--figures-only", action="store_true",
         help="skip simulation; only re-render figures from existing CSVs in --output-dir",
     )
     args = parser.parse_args(argv)
 
     out_dir = Path(args.output_dir) if args.output_dir else _today_dir()
+    if args.conservative_transport and args.output_dir is None:
+        out_dir = out_dir.with_name(out_dir.name + "_mass_transport")
     out_dir.mkdir(parents=True, exist_ok=True)
 
     if args.figures_only:
@@ -803,7 +842,7 @@ def main(argv: list[str] | None = None) -> int:
     for spec in _build_case_specs():
         currents = _resolve_currents(spec)
         leg_rows, hc_rows, runtime_s, leg_ledger_rows, hc_ledger_rows = _run_one(
-            spec, currents
+            spec, currents, conservative_transport=args.conservative_transport
         )
         _write_csv(
             out_dir / f"{spec.case_id}_legacy.csv", leg_rows
@@ -824,6 +863,19 @@ def main(argv: list[str] | None = None) -> int:
         summaries.append(
             _summarize(spec, leg_rows, hc_rows, runtime_s, leg_ledger_rows, hc_ledger_rows)
         )
+        summaries[-1]["hc_transport_model"] = (
+            "fixed_inventory_mass_transport" if args.conservative_transport else "fixed_time_fifo"
+        )
+        if args.conservative_transport:
+            summaries[-1]["hc_raw_energy_gate_passed"] = bool(
+                summaries[-1]["ledger"]["heat_current"]["max_abs_residual_system_w"] < 1e-6
+                and summaries[-1]["all_states_finite"]["heat_current"]
+                and summaries[-1]["solver_success_all_steps"]["heat_current"]
+            )
+            summaries[-1]["pipe_inventory_kg"] = {
+                "supply": float(hc_ledger_rows[0]["supply_mass_kg"]),
+                "return": float(hc_ledger_rows[0]["return_mass_kg"]),
+            }
         print(
             f"[{spec.case_id}] runtime={runtime_s:.1f}s"
             f"  T_b_avg_RMSE={summaries[-1]['temp_errors']['t_b_avg_k']['rmse_k']:.4f} K"
@@ -836,7 +888,14 @@ def main(argv: list[str] | None = None) -> int:
     with summary_path.open("w", encoding="utf-8") as fh:
         json.dump(summaries, fh, indent=2, ensure_ascii=False)
     summary_table = out_dir / "STAGE5_FINAL_VALIDATION.md"
-    summary_table.write_text(_render_markdown(summaries), encoding="utf-8")
+    transport_note = (
+        "HC uses fixed-inventory mass transport; all cases share inventory anchored "
+        "at the nominal pump speed. Legacy retains fixed-time FIFO. HC passes only "
+        "if its raw system residual is below 1e-6 W with finite states and successful "
+        "cycle solves. Temperature differences from legacy are model differences.\n\n"
+        if args.conservative_transport else ""
+    )
+    summary_table.write_text(transport_note + _render_markdown(summaries), encoding="utf-8")
     print(f"summary: {summary_path}")
     print(f"summary table: {summary_table}")
 
@@ -847,6 +906,8 @@ def main(argv: list[str] | None = None) -> int:
         except Exception as exc:
             print(f"figure rendering failed: {exc}")
 
+    if args.conservative_transport and not all(s["hc_raw_energy_gate_passed"] for s in summaries):
+        return 1
     return 0
 
 

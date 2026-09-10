@@ -1,0 +1,108 @@
+{
+  "baseline_comparison": {
+    "steps": 12,
+    "duration_s": 60.0,
+    "max_abs_difference": 0.0,
+    "per_field_max_abs_difference": {
+      "tank_temperature_after_k": 0.0,
+      "evaporator_outlet_temperature_k": 0.0,
+      "cluster_supply_temperature_k": 0.0,
+      "cluster_return_temperature_k": 0.0,
+      "q_evap_applied_w": 0.0,
+      "q_cluster_to_fluid_w": 0.0,
+      "q_gen_w": 0.0
+    }
+  },
+  "smoke": {
+    "constant": {
+      "legacy": {
+        "steps": 24,
+        "duration_s": 120.0,
+        "all_states_finite": true,
+        "all_cycle_solves_successful": true,
+        "max_abs_residual_battery_w": 1.8475475371815264e-08,
+        "max_abs_residual_plate_w": 4.0745362639427185e-10,
+        "max_abs_residual_system_w": 1.83836164069362e-08,
+        "max_abs_transport_flow_mismatch_w": 0.0,
+        "max_abs_unexplained_residual_w": 1.83836164069362e-08,
+        "max_abs_old_ledger_system_residual_w": 8189.015102416506
+      },
+      "hc": {
+        "steps": 24,
+        "duration_s": 120.0,
+        "all_states_finite": true,
+        "all_cycle_solves_successful": true,
+        "max_abs_residual_battery_w": 1.5625118976458907e-08,
+        "max_abs_residual_plate_w": 4.2018655221909285e-10,
+        "max_abs_residual_system_w": 1.616353983990848e-08,
+        "max_abs_transport_flow_mismatch_w": 0.0,
+        "max_abs_unexplained_residual_w": 1.616353983990848e-08,
+        "max_abs_old_ledger_system_residual_w": 7733.453083653998
+      }
+    },
+    "constant_flow_excitations": {
+      "legacy": {
+        "steps": 24,
+        "duration_s": 120.0,
+        "all_states_finite": true,
+        "all_cycle_solves_successful": true,
+        "max_abs_residual_battery_w": 1.4449142327066511e-08,
+        "max_abs_residual_plate_w": 3.183231456205249e-10,
+        "max_abs_residual_system_w": 1.4754732546862215e-08,
+        "max_abs_transport_flow_mismatch_w": 0.0,
+        "max_abs_unexplained_residual_w": 1.4754732546862215e-08,
+        "max_abs_old_ledger_system_residual_w": 8189.015102416506
+      },
+      "hc": {
+        "steps": 24,
+        "duration_s": 120.0,
+        "all_states_finite": true,
+        "all_cycle_solves_successful": true,
+        "max_abs_residual_battery_w": 2.5152985472232103e-08,
+        "max_abs_residual_plate_w": 4.2018655221909285e-10,
+        "max_abs_residual_system_w": 2.5209374143742025e-08,
+        "max_abs_transport_flow_mismatch_w": 0.0,
+        "max_abs_unexplained_residual_w": 2.5209374143742025e-08,
+        "max_abs_old_ledger_system_residual_w": 7733.453083653998
+      }
+    },
+    "flow_step": {
+      "legacy": {
+        "steps": 24,
+        "duration_s": 120.0,
+        "all_states_finite": true,
+        "all_cycle_solves_successful": true,
+        "max_abs_residual_battery_w": 1.4449142327066511e-08,
+        "max_abs_residual_plate_w": 4.1109160520136356e-10,
+        "max_abs_residual_system_w": 1569.6091200726823,
+        "max_abs_transport_flow_mismatch_w": 1569.6091200845317,
+        "max_abs_unexplained_residual_w": 1.4754732546862215e-08,
+        "max_abs_old_ledger_system_residual_w": 8189.015102416506
+      },
+      "hc": {
+        "steps": 24,
+        "duration_s": 120.0,
+        "all_states_finite": true,
+        "all_cycle_solves_successful": true,
+        "max_abs_residual_battery_w": 2.026899892371148e-08,
+        "max_abs_residual_plate_w": 4.383764462545514e-10,
+        "max_abs_residual_system_w": 1439.0979896055615,
+        "max_abs_transport_flow_mismatch_w": 1439.0979896125384,
+        "max_abs_unexplained_residual_w": 2.0176685211481526e-08,
+        "max_abs_old_ledger_system_residual_w": 7733.453083653998
+      }
+    }
+  },
+  "harness_integration": {
+    "stage4": {
+      "steps_per_backend": 4,
+      "duration_s": 20.0,
+      "completed": true
+    },
+    "stage5": {
+      "steps_per_backend": 4,
+      "duration_s": 20.0,
+      "completed": true
+    }
+  }
+}

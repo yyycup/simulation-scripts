@@ -1,0 +1,9 @@
+{
+  "tests_run": 111,
+  "failures": 0,
+  "errors": 0,
+  "runtime_s": 98.733,
+  "new_component_and_integration_tests": 9,
+  "red_phase_failures_due_to_missing_component": 9,
+  "scope": "targeted heat-current and transport regression; not full repository discovery"
+}

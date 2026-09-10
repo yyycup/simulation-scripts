@@ -1,0 +1,17 @@
+{
+  "steps": 12,
+  "duration_s": 60.0,
+  "reference_flow_kg_s": 0.8996400000000264,
+  "supply_mass_kg": 13.494600000000396,
+  "return_mass_kg": 17.99280000000053,
+  "per_field_max_abs_difference": {
+    "tank_temperature_after_k": 0.0,
+    "cluster_supply_temperature_k": 0.0,
+    "cluster_return_temperature_k": 0.0,
+    "evaporator_outlet_temperature_k": 0.0,
+    "q_evap_applied_w": 0.0,
+    "q_cluster_to_fluid_w": 0.0,
+    "q_gen_w": 0.0
+  },
+  "max_abs_difference": 0.0
+}

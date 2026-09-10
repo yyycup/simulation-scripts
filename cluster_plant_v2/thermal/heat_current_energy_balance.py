@@ -29,18 +29,30 @@ Three local balances are reported:
 
     1. Battery:    Q_gen_eff = dE_battery/dt + Q_bp       (Q_gen_eff := Q_gen - Q_air)
     2. Cold Plate: Q_bp      = dE_plate/dt + Q_pf
-    3. Loop:       Q_pf - Q_evap_applied = dE_coolant_total/dt
+    3. Loop:       Q_pf - Q_evap_applied = dE_coolant_total/dt + R_loop
 
 The global system residual is then the algebraic sum of all flows minus
 all storage changes; the three local residuals plus the global residual
-are reported every step. ``Q_air`` is **explicit** explicitly** tracked
+are reported every step. ``Q_air`` is explicitly tracked
 (it is not absorbed into ``Q_gen_eff``) so the heat-source rate ``Q_gen``
 and the air-loss rate ``Q_air`` are both visible in the ledger.
 
-### Numerical conditioning
-The per-step residuals live in the band ``<= 1e-8 W`` (Stage 8C3 local
-gates). The cumulative residual is computed as the trapezoidal integral of
-``|R_system(t)|`` over the simulation window.
+### Transport storage boundary
+For the legacy time FIFO, each temperature represents a fixed equivalent coolant mass
+``m_ref * delay.dt_s`` kg. The reference flow is explicit at initialization
+and is retained in every snapshot; changing the operating flow does not
+create or destroy stored mass. Total pipe mass is ``m_ref * delay.delay_s``.
+There is no separate cold-plate coolant thermal state in either backend.
+
+At constant flow equal to the reference, FIFO storage closes the loop.
+At other flows the unchanged fixed-time FIFO is not a conservative model
+of a fixed-volume pipe. ``transport_flow_mismatch_w`` reports this known
+model discrepancy separately; the raw loop/system residuals retain it.
+It is not a hidden coolant-storage term and is not subtracted to force a pass.
+
+For CoolantMassTransport, storage is read directly as sum(m_parcel * cp * T).
+Equal incoming/outgoing mass conserves the inventory at every flow. No FIFO
+flow-mismatch correction applies; raw residuals must close numerically.
 """
 
 from __future__ import annotations
@@ -51,6 +63,7 @@ from typing import Mapping
 import numpy as np
 
 from cluster_plant_v2.thermal.heat_current_system import HeatCurrentStepInputs
+from cluster_plant_v2.thermal.coolant_mass_transport import CoolantMassTransport
 
 
 #: Convenience alias: a node-by-node energy ledger for one step.
@@ -80,16 +93,12 @@ class EnergyLedgerStep:
 
     residual_battery_w: float
     residual_plate_w: float
-    #: Implicit transport / unmodeled-loop-storage residual in W. The loop
-    #: balance is ``Q_pf - Q_evap_applied - dE_coolant_total/dt = R_loop``.
-    #: ``R_loop`` is **not** expected to be zero in this ledger because the
-    #: cluster-internal coolant segments (the per-zone coolant states inside
-    #: each cold plate) are not exposed as observable temperatures; their
-    #: storage is folded into ``R_loop`` together with any pure-time
-    #: transport contributions. This is consistent with the Stage 4 spec's
-    #: ``+ transport / storage terms`` allowance.
+    #: Raw loop residual; historical field name retained for CSV readers.
+    #: Zero at the reference flow up to numerical error. Off-reference flow
+    #: exposes the fixed-time FIFO's storage/transport mismatch.
     residual_loop_implicit_transport_w: float
     residual_system_w: float
+    transport_flow_mismatch_w: float = 0.0
 
 
 def ledger_from_legacy(
@@ -147,7 +156,9 @@ def ledger_from_legacy(
     new_plate_J = _plate_energy_J(plant)
     new_tank_J = float(plant.tank.thermal_capacity_j_k * plant.tank.temperature_k)
     new_segments_J = _coolant_segments_J(plant)
-    new_supply_J, new_return_J = _delay_energy_J(plant)
+    reference_flow = float(prev_energy["transport_reference_mass_flow_kg_s"])
+    _validate_transport_step(plant, dt_s)
+    new_supply_J, new_return_J = _delay_energy_J(plant, reference_flow)
 
     dE_battery_per_s = (new_battery_J - prev_energy["battery_J"]) / dt_s
     dE_plate_per_s = (new_plate_J - prev_energy["plate_J"]) / dt_s
@@ -164,6 +175,10 @@ def ledger_from_legacy(
     dE_coolant_total_per_s = (
         dE_tank_per_s + dE_segments_per_s + dE_supply_per_s + dE_return_per_s
     )
+    transport_mismatch = _transport_flow_mismatch(
+        plant, float(result["total_mass_flow_kg_s"]), reference_flow,
+        dE_supply_per_s, dE_return_per_s,
+    )
 
     # Three local residuals.
     residual_battery_w = q_gen_eff_w - dE_battery_per_s - q_bp_total_w
@@ -172,10 +187,8 @@ def ledger_from_legacy(
         q_pf_total_w - q_evap_applied_w - dE_coolant_total_per_s
     )
 
-    # Global residual: Q_gen_total - Q_air - (dE_battery + dE_plate + dE_coolant_total)
-    # - Q_pf - Q_tank_storage_change. The Q_pf and Q_tank terms cancel by
-    # construction of the loop residual, so the global residual equals
-    # residual_battery + residual_plate + residual_loop.
+    # Global coolant-boundary residual:
+    # Q_gen - Q_air - Q_evap_applied - d(E_battery + E_plate + E_coolant)/dt.
     residual_system_w = (
         residual_battery_w + residual_plate_w + residual_loop_w
     )
@@ -191,14 +204,15 @@ def ledger_from_legacy(
         q_tank_return_to_tank_w=q_tank_w,
         dE_battery_per_s=dE_battery_per_s,
         dE_plate_per_s=dE_plate_per_s,
-dE_coolant_segments_per_s=dE_segments_per_s,
-            dE_supply_per_s=dE_supply_per_s,
-            dE_return_per_s=dE_return_per_s,
-            dE_tank_per_s=dE_tank_per_s,
-            residual_battery_w=residual_battery_w,
-            residual_plate_w=residual_plate_w,
-            residual_loop_implicit_transport_w=residual_loop_w,
+        dE_coolant_segments_per_s=dE_segments_per_s,
+        dE_supply_per_s=dE_supply_per_s,
+        dE_return_per_s=dE_return_per_s,
+        dE_tank_per_s=dE_tank_per_s,
+        residual_battery_w=residual_battery_w,
+        residual_plate_w=residual_plate_w,
+        residual_loop_implicit_transport_w=residual_loop_w,
         residual_system_w=residual_system_w,
+        transport_flow_mismatch_w=transport_mismatch,
     )
     new_energy = {
         "battery_J": new_battery_J,
@@ -207,6 +221,7 @@ dE_coolant_segments_per_s=dE_segments_per_s,
         "coolant_segments_J": new_segments_J,
         "supply_delay_J": new_supply_J,
         "return_delay_J": new_return_J,
+        "transport_reference_mass_flow_kg_s": reference_flow,
     }
     return ledger, new_energy
 
@@ -246,7 +261,9 @@ def ledger_from_heat_current(
         parallel.tank.thermal_capacity_j_k * parallel.tank.temperature_k
     )
     new_segments_J = _heat_current_coolant_segments_J(parallel)
-    new_supply_J, new_return_J = _heat_current_delay_energy_J(parallel)
+    reference_flow = float(prev_energy["transport_reference_mass_flow_kg_s"])
+    _validate_transport_step(parallel, dt_s)
+    new_supply_J, new_return_J = _heat_current_delay_energy_J(parallel, reference_flow)
 
     dE_battery_per_s = (new_battery_J - prev_energy["battery_J"]) / dt_s
     dE_plate_per_s = (new_plate_J - prev_energy["plate_J"]) / dt_s
@@ -262,6 +279,10 @@ def ledger_from_heat_current(
     ) / dt_s
     dE_coolant_total_per_s = (
         dE_tank_per_s + dE_segments_per_s + dE_supply_per_s + dE_return_per_s
+    )
+    transport_mismatch = _transport_flow_mismatch(
+        parallel, float(inputs.total_mass_flow_kg_s), reference_flow,
+        dE_supply_per_s, dE_return_per_s,
     )
 
     residual_battery_w = q_gen_eff_w - dE_battery_per_s - q_bp_total_w
@@ -284,14 +305,15 @@ def ledger_from_heat_current(
         q_tank_return_to_tank_w=q_tank_w,
         dE_battery_per_s=dE_battery_per_s,
         dE_plate_per_s=dE_plate_per_s,
-dE_coolant_segments_per_s=dE_segments_per_s,
-            dE_supply_per_s=dE_supply_per_s,
-            dE_return_per_s=dE_return_per_s,
-            dE_tank_per_s=dE_tank_per_s,
-            residual_battery_w=residual_battery_w,
-            residual_plate_w=residual_plate_w,
-            residual_loop_implicit_transport_w=residual_loop_w,
+        dE_coolant_segments_per_s=dE_segments_per_s,
+        dE_supply_per_s=dE_supply_per_s,
+        dE_return_per_s=dE_return_per_s,
+        dE_tank_per_s=dE_tank_per_s,
+        residual_battery_w=residual_battery_w,
+        residual_plate_w=residual_plate_w,
+        residual_loop_implicit_transport_w=residual_loop_w,
         residual_system_w=residual_system_w,
+        transport_flow_mismatch_w=transport_mismatch,
     )
     new_energy = {
         "battery_J": new_battery_J,
@@ -300,20 +322,25 @@ dE_coolant_segments_per_s=dE_segments_per_s,
         "coolant_segments_J": new_segments_J,
         "supply_delay_J": new_supply_J,
         "return_delay_J": new_return_J,
+        "transport_reference_mass_flow_kg_s": reference_flow,
     }
     return ledger, new_energy
 
 
 def initial_energy_snapshot(
-    plant_or_parallel, *, is_heat_current: bool
+    plant_or_parallel, *, is_heat_current: bool,
+    transport_reference_mass_flow_kg_s: float,
 ) -> dict[str, float]:
     """Capture the energy snapshot at construction (before step 0).
 
-    This is a *read-only* walk over public state; nothing is mutated.
+    The explicit positive reference flow defines equivalent mass for time
+    FIFOs. Mass-transport pipes already own their inventory and stored energy;
+    the legacy reference-flow metadata does not rescale their mass.
+    This is a read-only walk over public state; nothing is mutated.
     """
     if is_heat_current:
-        return _heat_current_snapshot(plant_or_parallel)
-    return _legacy_snapshot(plant_or_parallel)
+        return _heat_current_snapshot(plant_or_parallel, transport_reference_mass_flow_kg_s)
+    return _legacy_snapshot(plant_or_parallel, transport_reference_mass_flow_kg_s)
 
 
 # ---------------------------------------------------------------------------
@@ -345,30 +372,44 @@ def _plate_energy_J(plant) -> float:
 
 
 def _coolant_segments_J(plant) -> float:
-    # The cluster does not explicitly store per-zone coolant temperatures;
-    # the closest proxy is the steady Q_pf on the cluster scale, but for
-    # the Stage 4 ledger we treat the coolant-in-pipes as the supply /
-    # return delays only and call this term 0. The plate-side Q_pf is
-    # already counted in dE_plate/dt, and the loop-wide coolant energy
-    # is dominated by the delays and the tank.
+    # Cold-plate coolant temperatures are algebraic outputs, not storage states.
     return 0.0
 
 
-def _delay_energy_J(plant) -> tuple[float, float]:
+def _validate_transport_step(plant, dt_s: float) -> None:
+    if not np.isfinite(dt_s) or dt_s <= 0.0 or any(
+        not np.isclose(dt_s, delay.dt_s, rtol=0.0, atol=1e-12)
+        for delay in (plant.supply_delay, plant.return_delay)
+    ):
+        raise ValueError("ledger dt_s must match both transport-delay time steps")
+
+
+def _delay_energy_J(plant, reference_flow: float) -> tuple[float, float]:
+    reference_flow = float(reference_flow)
+    if not np.isfinite(reference_flow) or reference_flow <= 0.0:
+        raise ValueError("transport_reference_mass_flow_kg_s must be positive and finite")
     cp = float(plant.tank.coolant_specific_heat_j_kg_k)
-    supply_J = float(
-        cp
-        * float(np.sum(plant.supply_delay.queue_values))
-    )
-    return_J = float(
-        cp
-        * float(np.sum(plant.return_delay.queue_values))
-    )
-    return supply_J, return_J
+    energies = []
+    for delay in (plant.supply_delay, plant.return_delay):
+        if isinstance(delay, CoolantMassTransport):
+            energies.append(delay.stored_energy_j)
+        else:
+            energies.append(float(reference_flow * delay.dt_s * cp * np.sum(delay.queue_values)))
+    return tuple(energies)
 
 
-def _legacy_snapshot(plant) -> dict[str, float]:
-    supply_J, return_J = _delay_energy_J(plant)
+def _transport_flow_mismatch(plant, flow, reference_flow, supply_rate, return_rate):
+    # Only the legacy time FIFO has an off-reference model discrepancy.
+    # The new pipe ledger reads its physical parcel energies directly.
+    return float(sum(
+        (flow / reference_flow - 1.0) * rate
+        for delay, rate in ((plant.supply_delay, supply_rate), (plant.return_delay, return_rate))
+        if not isinstance(delay, CoolantMassTransport)
+    ))
+
+
+def _legacy_snapshot(plant, reference_flow: float) -> dict[str, float]:
+    supply_J, return_J = _delay_energy_J(plant, reference_flow)
     return {
         "battery_J": _battery_energy_J(plant),
         "plate_J": _plate_energy_J(plant),
@@ -378,6 +419,7 @@ def _legacy_snapshot(plant) -> dict[str, float]:
         "coolant_segments_J": 0.0,
         "supply_delay_J": supply_J,
         "return_delay_J": return_J,
+        "transport_reference_mass_flow_kg_s": float(reference_flow),
     }
 
 
@@ -418,19 +460,12 @@ def _heat_current_coolant_segments_J(parallel) -> float:
     return 0.0
 
 
-def _heat_current_delay_energy_J(parallel) -> tuple[float, float]:
-    cp = float(parallel.tank.coolant_specific_heat_j_kg_k)
-    supply_J = float(
-        cp * float(np.sum(parallel.supply_delay.queue_values))
-    )
-    return_J = float(
-        cp * float(np.sum(parallel.return_delay.queue_values))
-    )
-    return supply_J, return_J
+def _heat_current_delay_energy_J(parallel, reference_flow: float) -> tuple[float, float]:
+    return _delay_energy_J(parallel, reference_flow)
 
 
-def _heat_current_snapshot(parallel) -> dict[str, float]:
-    supply_J, return_J = _heat_current_delay_energy_J(parallel)
+def _heat_current_snapshot(parallel, reference_flow: float) -> dict[str, float]:
+    supply_J, return_J = _heat_current_delay_energy_J(parallel, reference_flow)
     return {
         "battery_J": _heat_current_battery_energy_J(parallel),
         "plate_J": _heat_current_plate_energy_J(parallel),
@@ -440,6 +475,7 @@ def _heat_current_snapshot(parallel) -> dict[str, float]:
         "coolant_segments_J": 0.0,
         "supply_delay_J": supply_J,
         "return_delay_J": return_J,
+        "transport_reference_mass_flow_kg_s": float(reference_flow),
     }
 
 

@@ -56,8 +56,16 @@ MAXIMUM_COMPRESSOR_SPEED_RPM = 6000.0
 MAXIMUM_FAN_SPEED_RPM = 4000.0
 COMPRESSOR_TIME_CONSTANT_S = 5.0
 EVAPORATOR_TIME_CONSTANT_S = 45.0
-SUPPLY_TRANSPORT_DELAY_S = 15.0
-RETURN_TRANSPORT_DELAY_S = 20.0
+# Literature-anchored engineering nominal for the five-Pack plant.
+# Yu et al. (2026) use 10 L/min per Pack with Phi25 secondary headers and
+# Phi14 Pack branches, matching the present 50.4 L/min total flow. Public
+# 215-261 kWh cabinet data place total coolant fill near 9-11 L. Subtracting
+# the modeled 3 L tank leaves about 6-8 L outside the tank, or 7.1-9.5 s at
+# 50.4 L/min. The 5 s Plant grid therefore uses one step on each side:
+# 8.4 L outside the tank and 11.4 L represented by the complete loop.
+# This is the selected engineering nominal, not a hardware measurement.
+SUPPLY_TRANSPORT_DELAY_S = 5.0
+RETURN_TRANSPORT_DELAY_S = 5.0
 
 
 # Retained Pack Interface

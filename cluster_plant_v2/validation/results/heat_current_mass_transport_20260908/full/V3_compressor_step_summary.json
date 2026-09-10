@@ -1,0 +1,109 @@
+{
+  "case_id": "V3_compressor_step",
+  "description": "Compressor step 2000 -> 4000 rpm at 200 s.",
+  "runtime_s": 196.14193560002604,
+  "steps": 120,
+  "temp_errors": {
+    "t_b_avg_k": {
+      "rmse_k": 0.05844911735062493,
+      "mae_k": 0.05007357296591361,
+      "max_abs_k": 0.10155576378866726
+    },
+    "t_b_max_k": {
+      "rmse_k": 0.023143553138551508,
+      "mae_k": 0.018651145237230084,
+      "max_abs_k": 0.04069966164797734
+    },
+    "t_p_avg_k": {
+      "rmse_k": 0.13587776839031546,
+      "mae_k": 0.13071881107103375,
+      "max_abs_k": 0.1832766264132033
+    },
+    "t_p_max_k": {
+      "rmse_k": 0.05881938516546311,
+      "mae_k": 0.05542134887595817,
+      "max_abs_k": 0.10212514203709588
+    },
+    "tank_temperature_k": {
+      "rmse_k": 0.3857228096712178,
+      "mae_k": 0.358456968640886,
+      "max_abs_k": 0.5034841914030608
+    },
+    "t_supply_k": {
+      "rmse_k": 0.33031360296140333,
+      "mae_k": 0.3033541032738067,
+      "max_abs_k": 0.4370696500679969
+    },
+    "t_return_k": {
+      "rmse_k": 0.39487353476481385,
+      "mae_k": 0.37295253517119137,
+      "max_abs_k": 0.5034733115695076
+    },
+    "t_evap_out_k": {
+      "rmse_k": 0.3371889320129651,
+      "mae_k": 0.3140654225583603,
+      "max_abs_k": 0.4370696500679969
+    }
+  },
+  "cumulative": {
+    "q_gen_w": {
+      "e_legacy_j": 3088397.9588355026,
+      "e_hc_j": 3085517.3207492908,
+      "rel_diff_pct": 0.09327289179073374
+    },
+    "q_bp_w": {
+      "e_legacy_j": 6334411.659776585,
+      "e_hc_j": 6457479.583951507,
+      "rel_diff_pct": 1.9428469569857763
+    },
+    "q_pf_w": {
+      "e_legacy_j": 6546114.63149563,
+      "e_hc_j": 6675118.156741403,
+      "rel_diff_pct": 1.970688454264029
+    },
+    "q_evap_cycle_w": {
+      "e_legacy_j": 7766747.056185064,
+      "e_hc_j": 7848534.149779807,
+      "rel_diff_pct": 1.053041807633115
+    },
+    "q_evap_applied_w": {
+      "e_legacy_j": 7565879.59366977,
+      "e_hc_j": 7639058.982028803,
+      "rel_diff_pct": 0.9672290901940918
+    }
+  },
+  "all_states_finite": {
+    "legacy": true,
+    "heat_current": true
+  },
+  "solver_success_all_steps": {
+    "legacy": true,
+    "heat_current": true
+  },
+  "domain_invalid": {
+    "legacy": false,
+    "heat_current": false
+  },
+  "ledger": {
+    "legacy": {
+      "max_abs_residual_battery_w": 2.2231688490137458e-08,
+      "max_abs_residual_plate_w": 4.638422979041934e-10,
+      "max_abs_residual_loop_transport_w": 1.5306795830838382e-09,
+      "max_abs_residual_system_w": 2.1329469745978713e-08,
+      "max_abs_transport_flow_mismatch_w": 0.0
+    },
+    "heat_current": {
+      "max_abs_residual_battery_w": 2.41889210883528e-08,
+      "max_abs_residual_plate_w": 4.838511813431978e-10,
+      "max_abs_residual_loop_transport_w": 1.424723450327292e-09,
+      "max_abs_residual_system_w": 2.3990992303879466e-08,
+      "max_abs_transport_flow_mismatch_w": 0.0
+    }
+  },
+  "hc_transport_model": "fixed_inventory_mass_transport",
+  "hc_raw_energy_gate_passed": true,
+  "pipe_inventory_kg": {
+    "supply": 13.494600000000396,
+    "return": 17.99280000000053
+  }
+}

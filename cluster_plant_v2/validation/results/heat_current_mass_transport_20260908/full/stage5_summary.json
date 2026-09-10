@@ -1,0 +1,984 @@
+[
+  {
+    "case_id": "V1_constant_nominal_forward",
+    "description": "560 A, 4000 rpm compressor, nominal pump, forward flow.",
+    "runtime_s": 188.8,
+    "steps": 120,
+    "temp_errors": {
+      "t_b_avg_k": {
+        "rmse_k": 0.07803016902403982,
+        "mae_k": 0.0703831521441027,
+        "max_abs_k": 0.11985320118736809
+      },
+      "t_b_max_k": {
+        "rmse_k": 0.029139526736354542,
+        "mae_k": 0.024515597725273133,
+        "max_abs_k": 0.043036639144133915
+      },
+      "t_p_avg_k": {
+        "rmse_k": 0.1685413454498265,
+        "mae_k": 0.16564508564418362,
+        "max_abs_k": 0.33208923692444614
+      },
+      "t_p_max_k": {
+        "rmse_k": 0.07004313496472737,
+        "mae_k": 0.06575323319836883,
+        "max_abs_k": 0.1893022747019586
+      },
+      "tank_temperature_k": {
+        "rmse_k": 0.4615864640995375,
+        "mae_k": 0.4444477147861827,
+        "max_abs_k": 0.5315780744958829
+      },
+      "t_supply_k": {
+        "rmse_k": 0.3971668377861146,
+        "mae_k": 0.37636740050793754,
+        "max_abs_k": 0.46518736786003956
+      },
+      "t_return_k": {
+        "rmse_k": 0.4675526887304298,
+        "mae_k": 0.4574737835232933,
+        "max_abs_k": 0.5310177936288483
+      },
+      "t_evap_out_k": {
+        "rmse_k": 0.4023006455076215,
+        "mae_k": 0.3864969406605444,
+        "max_abs_k": 0.46518736786003956
+      }
+    },
+    "cumulative": {
+      "q_gen_w": {
+        "e_legacy_j": 3032814.210871316,
+        "e_hc_j": 3028620.1044439143,
+        "rel_diff_pct": 0.1382909118655448
+      },
+      "q_bp_w": {
+        "e_legacy_j": 7795002.033069387,
+        "e_hc_j": 7939811.362967617,
+        "rel_diff_pct": 1.8577202325784279
+      },
+      "q_pf_w": {
+        "e_legacy_j": 8022446.180514156,
+        "e_hc_j": 8174257.934469314,
+        "rel_diff_pct": 1.8923374559233108
+      },
+      "q_evap_cycle_w": {
+        "e_legacy_j": 8823233.876773974,
+        "e_hc_j": 8929665.893807871,
+        "rel_diff_pct": 1.2062699291477008
+      },
+      "q_evap_applied_w": {
+        "e_legacy_j": 8992111.685685854,
+        "e_hc_j": 9090479.399252517,
+        "rel_diff_pct": 1.0939334052450658
+      }
+    },
+    "all_states_finite": {
+      "legacy": true,
+      "heat_current": true
+    },
+    "solver_success_all_steps": {
+      "legacy": true,
+      "heat_current": true
+    },
+    "domain_invalid": {
+      "legacy": false,
+      "heat_current": false
+    },
+    "ledger": {
+      "legacy": {
+        "max_abs_residual_battery_w": 2.231899998150766e-08,
+        "max_abs_residual_plate_w": 5.729816621169448e-10,
+        "max_abs_residual_loop_transport_w": 1.2336158761172555e-09,
+        "max_abs_residual_system_w": 2.268063781230012e-08,
+        "max_abs_transport_flow_mismatch_w": 0.0
+      },
+      "heat_current": {
+        "max_abs_residual_battery_w": 2.540400600992143e-08,
+        "max_abs_residual_plate_w": 6.83940015733242e-10,
+        "max_abs_residual_loop_transport_w": 9.192717698169872e-10,
+        "max_abs_residual_system_w": 2.431556822557468e-08,
+        "max_abs_transport_flow_mismatch_w": 0.0
+      }
+    },
+    "hc_transport_model": "fixed_inventory_mass_transport",
+    "hc_raw_energy_gate_passed": true,
+    "pipe_inventory_kg": {
+      "supply": 13.494600000000396,
+      "return": 17.99280000000053
+    },
+    "runtime_note": "completed serial run; timing rounded to 0.1 s in full_stdout.log"
+  },
+  {
+    "case_id": "V2_current_step",
+    "description": "Current step 560 -> 800 A at 200 s.",
+    "runtime_s": 192.90947359998245,
+    "steps": 120,
+    "temp_errors": {
+      "t_b_avg_k": {
+        "rmse_k": 0.0811047728080287,
+        "mae_k": 0.07276522255765107,
+        "max_abs_k": 0.12620477352550097
+      },
+      "t_b_max_k": {
+        "rmse_k": 0.02910495180516286,
+        "mae_k": 0.024480075566613854,
+        "max_abs_k": 0.042991403995870314
+      },
+      "t_p_avg_k": {
+        "rmse_k": 0.17468063354334326,
+        "mae_k": 0.1718556670937924,
+        "max_abs_k": 0.33208923692444614
+      },
+      "t_p_max_k": {
+        "rmse_k": 0.06948555934096813,
+        "mae_k": 0.06530069544522993,
+        "max_abs_k": 0.1893022747019586
+      },
+      "tank_temperature_k": {
+        "rmse_k": 0.47509438135924,
+        "mae_k": 0.45698728205024725,
+        "max_abs_k": 0.5382846358703546
+      },
+      "t_supply_k": {
+        "rmse_k": 0.4080889486187828,
+        "mae_k": 0.3863882503656176,
+        "max_abs_k": 0.4687422653488511
+      },
+      "t_return_k": {
+        "rmse_k": 0.4817974258496471,
+        "mae_k": 0.4709238685075353,
+        "max_abs_k": 0.5380504465888407
+      },
+      "t_evap_out_k": {
+        "rmse_k": 0.4136922071217378,
+        "mae_k": 0.39711746981319085,
+        "max_abs_k": 0.4687422653488511
+      }
+    },
+    "cumulative": {
+      "q_gen_w": {
+        "e_legacy_j": 5201291.09161982,
+        "e_hc_j": 5195083.253369935,
+        "rel_diff_pct": 0.11935187130532607
+      },
+      "q_bp_w": {
+        "e_legacy_j": 8019495.491570272,
+        "e_hc_j": 8170147.0439218525,
+        "rel_diff_pct": 1.8785664573281322
+      },
+      "q_pf_w": {
+        "e_legacy_j": 8209642.433285128,
+        "e_hc_j": 8367686.255933346,
+        "rel_diff_pct": 1.925099953287197
+      },
+      "q_evap_cycle_w": {
+        "e_legacy_j": 8900147.567045294,
+        "e_hc_j": 9010225.740551546,
+        "rel_diff_pct": 1.2368129031235453
+      },
+      "q_evap_applied_w": {
+        "e_legacy_j": 9052509.781844182,
+        "e_hc_j": 9153911.463083457,
+        "rel_diff_pct": 1.120149921766974
+      }
+    },
+    "all_states_finite": {
+      "legacy": true,
+      "heat_current": true
+    },
+    "solver_success_all_steps": {
+      "legacy": true,
+      "heat_current": true
+    },
+    "domain_invalid": {
+      "legacy": false,
+      "heat_current": false
+    },
+    "ledger": {
+      "legacy": {
+        "max_abs_residual_battery_w": 1.8555510905571282e-08,
+        "max_abs_residual_plate_w": 5.456968210637569e-10,
+        "max_abs_residual_loop_transport_w": 1.237651758856373e-09,
+        "max_abs_residual_system_w": 1.83836164069362e-08,
+        "max_abs_transport_flow_mismatch_w": 0.0
+      },
+      "heat_current": {
+        "max_abs_residual_battery_w": 2.449633029755205e-08,
+        "max_abs_residual_plate_w": 5.20230969414115e-10,
+        "max_abs_residual_loop_transport_w": 1.055383336279192e-09,
+        "max_abs_residual_system_w": 2.4819769350870047e-08,
+        "max_abs_transport_flow_mismatch_w": 0.0
+      }
+    },
+    "hc_transport_model": "fixed_inventory_mass_transport",
+    "hc_raw_energy_gate_passed": true,
+    "pipe_inventory_kg": {
+      "supply": 13.494600000000396,
+      "return": 17.99280000000053
+    }
+  },
+  {
+    "case_id": "V3_compressor_step",
+    "description": "Compressor step 2000 -> 4000 rpm at 200 s.",
+    "runtime_s": 196.14193560002604,
+    "steps": 120,
+    "temp_errors": {
+      "t_b_avg_k": {
+        "rmse_k": 0.05844911735062493,
+        "mae_k": 0.05007357296591361,
+        "max_abs_k": 0.10155576378866726
+      },
+      "t_b_max_k": {
+        "rmse_k": 0.023143553138551508,
+        "mae_k": 0.018651145237230084,
+        "max_abs_k": 0.04069966164797734
+      },
+      "t_p_avg_k": {
+        "rmse_k": 0.13587776839031546,
+        "mae_k": 0.13071881107103375,
+        "max_abs_k": 0.1832766264132033
+      },
+      "t_p_max_k": {
+        "rmse_k": 0.05881938516546311,
+        "mae_k": 0.05542134887595817,
+        "max_abs_k": 0.10212514203709588
+      },
+      "tank_temperature_k": {
+        "rmse_k": 0.3857228096712178,
+        "mae_k": 0.358456968640886,
+        "max_abs_k": 0.5034841914030608
+      },
+      "t_supply_k": {
+        "rmse_k": 0.33031360296140333,
+        "mae_k": 0.3033541032738067,
+        "max_abs_k": 0.4370696500679969
+      },
+      "t_return_k": {
+        "rmse_k": 0.39487353476481385,
+        "mae_k": 0.37295253517119137,
+        "max_abs_k": 0.5034733115695076
+      },
+      "t_evap_out_k": {
+        "rmse_k": 0.3371889320129651,
+        "mae_k": 0.3140654225583603,
+        "max_abs_k": 0.4370696500679969
+      }
+    },
+    "cumulative": {
+      "q_gen_w": {
+        "e_legacy_j": 3088397.9588355026,
+        "e_hc_j": 3085517.3207492908,
+        "rel_diff_pct": 0.09327289179073374
+      },
+      "q_bp_w": {
+        "e_legacy_j": 6334411.659776585,
+        "e_hc_j": 6457479.583951507,
+        "rel_diff_pct": 1.9428469569857763
+      },
+      "q_pf_w": {
+        "e_legacy_j": 6546114.63149563,
+        "e_hc_j": 6675118.156741403,
+        "rel_diff_pct": 1.970688454264029
+      },
+      "q_evap_cycle_w": {
+        "e_legacy_j": 7766747.056185064,
+        "e_hc_j": 7848534.149779807,
+        "rel_diff_pct": 1.053041807633115
+      },
+      "q_evap_applied_w": {
+        "e_legacy_j": 7565879.59366977,
+        "e_hc_j": 7639058.982028803,
+        "rel_diff_pct": 0.9672290901940918
+      }
+    },
+    "all_states_finite": {
+      "legacy": true,
+      "heat_current": true
+    },
+    "solver_success_all_steps": {
+      "legacy": true,
+      "heat_current": true
+    },
+    "domain_invalid": {
+      "legacy": false,
+      "heat_current": false
+    },
+    "ledger": {
+      "legacy": {
+        "max_abs_residual_battery_w": 2.2231688490137458e-08,
+        "max_abs_residual_plate_w": 4.638422979041934e-10,
+        "max_abs_residual_loop_transport_w": 1.5306795830838382e-09,
+        "max_abs_residual_system_w": 2.1329469745978713e-08,
+        "max_abs_transport_flow_mismatch_w": 0.0
+      },
+      "heat_current": {
+        "max_abs_residual_battery_w": 2.41889210883528e-08,
+        "max_abs_residual_plate_w": 4.838511813431978e-10,
+        "max_abs_residual_loop_transport_w": 1.424723450327292e-09,
+        "max_abs_residual_system_w": 2.3990992303879466e-08,
+        "max_abs_transport_flow_mismatch_w": 0.0
+      }
+    },
+    "hc_transport_model": "fixed_inventory_mass_transport",
+    "hc_raw_energy_gate_passed": true,
+    "pipe_inventory_kg": {
+      "supply": 13.494600000000396,
+      "return": 17.99280000000053
+    }
+  },
+  {
+    "case_id": "V4_pump_step",
+    "description": "Pump step 3000 -> 4500 rpm at 200 s.",
+    "runtime_s": 190.7375536999898,
+    "steps": 120,
+    "temp_errors": {
+      "t_b_avg_k": {
+        "rmse_k": 0.022915781774262532,
+        "mae_k": 0.016354673169428225,
+        "max_abs_k": 0.056023054865477206
+      },
+      "t_b_max_k": {
+        "rmse_k": 0.07867263839859943,
+        "mae_k": 0.07228474341703144,
+        "max_abs_k": 0.10248713304906687
+      },
+      "t_p_avg_k": {
+        "rmse_k": 0.16425483699920695,
+        "mae_k": 0.13620315655074364,
+        "max_abs_k": 0.5696645870024213
+      },
+      "t_p_max_k": {
+        "rmse_k": 0.18975398489874074,
+        "mae_k": 0.13868389304262888,
+        "max_abs_k": 0.6123181135198479
+      },
+      "tank_temperature_k": {
+        "rmse_k": 0.6061819515561265,
+        "mae_k": 0.5150935820237331,
+        "max_abs_k": 1.5905778820755927
+      },
+      "t_supply_k": {
+        "rmse_k": 0.5958708934235917,
+        "mae_k": 0.4780881264782266,
+        "max_abs_k": 1.8290333267358392
+      },
+      "t_return_k": {
+        "rmse_k": 0.5578041568376255,
+        "mae_k": 0.5057240505994623,
+        "max_abs_k": 1.0472252659932906
+      },
+      "t_evap_out_k": {
+        "rmse_k": 0.5413117421954018,
+        "mae_k": 0.4515414009298283,
+        "max_abs_k": 1.5091449583783287
+      }
+    },
+    "cumulative": {
+      "q_gen_w": {
+        "e_legacy_j": 3029547.1219453015,
+        "e_hc_j": 3028735.622840978,
+        "rel_diff_pct": 0.02678615224186577
+      },
+      "q_bp_w": {
+        "e_legacy_j": 7939799.429716167,
+        "e_hc_j": 8007879.106855,
+        "rel_diff_pct": 0.8574483239971095
+      },
+      "q_pf_w": {
+        "e_legacy_j": 8178985.110421764,
+        "e_hc_j": 8251861.897997928,
+        "rel_diff_pct": 0.8910248226678347
+      },
+      "q_evap_cycle_w": {
+        "e_legacy_j": 8876901.020343151,
+        "e_hc_j": 9003399.271122627,
+        "rel_diff_pct": 1.4250271630784277
+      },
+      "q_evap_applied_w": {
+        "e_legacy_j": 9028247.934767501,
+        "e_hc_j": 9149280.041084642,
+        "rel_diff_pct": 1.3405935148396766
+      }
+    },
+    "all_states_finite": {
+      "legacy": true,
+      "heat_current": true
+    },
+    "solver_success_all_steps": {
+      "legacy": true,
+      "heat_current": true
+    },
+    "domain_invalid": {
+      "legacy": false,
+      "heat_current": false
+    },
+    "ledger": {
+      "legacy": {
+        "max_abs_residual_battery_w": 2.1258529159240425e-08,
+        "max_abs_residual_plate_w": 4.656612873077393e-10,
+        "max_abs_residual_loop_transport_w": 2114.7372297635884,
+        "max_abs_residual_system_w": 2114.73722975445,
+        "max_abs_transport_flow_mismatch_w": 2114.737229764834
+      },
+      "heat_current": {
+        "max_abs_residual_battery_w": 1.844637154135853e-08,
+        "max_abs_residual_plate_w": 4.783942131325603e-10,
+        "max_abs_residual_loop_transport_w": 1.1332303984090686e-09,
+        "max_abs_residual_system_w": 1.825219442253001e-08,
+        "max_abs_transport_flow_mismatch_w": 0.0
+      }
+    },
+    "hc_transport_model": "fixed_inventory_mass_transport",
+    "hc_raw_energy_gate_passed": true,
+    "pipe_inventory_kg": {
+      "supply": 13.494600000000396,
+      "return": 17.99280000000053
+    }
+  },
+  {
+    "case_id": "V5_low_flow",
+    "description": "Low flow (pump 2400 rpm).",
+    "runtime_s": 200.55324139998993,
+    "steps": 120,
+    "temp_errors": {
+      "t_b_avg_k": {
+        "rmse_k": 0.023085035996067208,
+        "mae_k": 0.019811803867123483,
+        "max_abs_k": 0.0368770920474617
+      },
+      "t_b_max_k": {
+        "rmse_k": 0.1820544178945692,
+        "mae_k": 0.16533509877624417,
+        "max_abs_k": 0.25513729245454897
+      },
+      "t_p_avg_k": {
+        "rmse_k": 0.1633327146659077,
+        "mae_k": 0.116667958516967,
+        "max_abs_k": 0.7062530960045592
+      },
+      "t_p_max_k": {
+        "rmse_k": 0.38410880724877444,
+        "mae_k": 0.3683232372993236,
+        "max_abs_k": 0.7274504395486474
+      },
+      "tank_temperature_k": {
+        "rmse_k": 1.2389944452599426,
+        "mae_k": 1.195124972684369,
+        "max_abs_k": 2.136548894388511
+      },
+      "t_supply_k": {
+        "rmse_k": 1.1589934592546849,
+        "mae_k": 1.0776736102539337,
+        "max_abs_k": 2.883931877151838
+      },
+      "t_return_k": {
+        "rmse_k": 1.1320322532222824,
+        "mae_k": 1.112706763455249,
+        "max_abs_k": 1.6295288193033457
+      },
+      "t_evap_out_k": {
+        "rmse_k": 1.0314967603575602,
+        "mae_k": 0.9837722306876491,
+        "max_abs_k": 1.9992601119173514
+      }
+    },
+    "cumulative": {
+      "q_gen_w": {
+        "e_legacy_j": 3038997.1541174985,
+        "e_hc_j": 3039421.8503281623,
+        "rel_diff_pct": 0.013974880170201877
+      },
+      "q_bp_w": {
+        "e_legacy_j": 7480453.998285436,
+        "e_hc_j": 7524324.146714913,
+        "rel_diff_pct": 0.586463715163972
+      },
+      "q_pf_w": {
+        "e_legacy_j": 7704544.279639281,
+        "e_hc_j": 7751284.859102668,
+        "rel_diff_pct": 0.6066624808284605
+      },
+      "q_evap_cycle_w": {
+        "e_legacy_j": 8218707.311955097,
+        "e_hc_j": 8481501.54932988,
+        "rel_diff_pct": 3.197513032159178
+      },
+      "q_evap_applied_w": {
+        "e_legacy_j": 8421605.036130387,
+        "e_hc_j": 8667321.058235016,
+        "rel_diff_pct": 2.917686367983977
+      }
+    },
+    "all_states_finite": {
+      "legacy": true,
+      "heat_current": true
+    },
+    "solver_success_all_steps": {
+      "legacy": true,
+      "heat_current": true
+    },
+    "domain_invalid": {
+      "legacy": false,
+      "heat_current": false
+    },
+    "ledger": {
+      "legacy": {
+        "max_abs_residual_battery_w": 1.937223714776337e-08,
+        "max_abs_residual_plate_w": 4.802132025361061e-10,
+        "max_abs_residual_loop_transport_w": 1.0331859812140465e-09,
+        "max_abs_residual_system_w": 1.873411292763194e-08,
+        "max_abs_transport_flow_mismatch_w": 0.0
+      },
+      "heat_current": {
+        "max_abs_residual_battery_w": 2.2466338123194873e-08,
+        "max_abs_residual_plate_w": 6.275513442233205e-10,
+        "max_abs_residual_loop_transport_w": 1.1289102985756472e-09,
+        "max_abs_residual_system_w": 2.2793074094806798e-08,
+        "max_abs_transport_flow_mismatch_w": 0.0
+      }
+    },
+    "hc_transport_model": "fixed_inventory_mass_transport",
+    "hc_raw_energy_gate_passed": true,
+    "pipe_inventory_kg": {
+      "supply": 13.494600000000396,
+      "return": 17.99280000000053
+    }
+  },
+  {
+    "case_id": "V6_high_flow",
+    "description": "High flow (pump 4500 rpm).",
+    "runtime_s": 206.74618799996097,
+    "steps": 120,
+    "temp_errors": {
+      "t_b_avg_k": {
+        "rmse_k": 0.1413228924163688,
+        "mae_k": 0.12926917236447272,
+        "max_abs_k": 0.19928482408204218
+      },
+      "t_b_max_k": {
+        "rmse_k": 0.05818775015586138,
+        "mae_k": 0.054323919726195886,
+        "max_abs_k": 0.07638944121902114
+      },
+      "t_p_avg_k": {
+        "rmse_k": 0.3358279946841498,
+        "mae_k": 0.29990209748842794,
+        "max_abs_k": 1.06904852267985
+      },
+      "t_p_max_k": {
+        "rmse_k": 0.1692319909402606,
+        "mae_k": 0.12443102898094197,
+        "max_abs_k": 0.8298378180357417
+      },
+      "tank_temperature_k": {
+        "rmse_k": 0.36158886530250484,
+        "mae_k": 0.2405856412823127,
+        "max_abs_k": 2.2241706812926054
+      },
+      "t_supply_k": {
+        "rmse_k": 0.3849290050506502,
+        "mae_k": 0.2431259309601136,
+        "max_abs_k": 1.9944406859738706
+      },
+      "t_return_k": {
+        "rmse_k": 0.2328518233008552,
+        "mae_k": 0.21144361268552483,
+        "max_abs_k": 0.8287442152361564
+      },
+      "t_evap_out_k": {
+        "rmse_k": 0.35000574461201267,
+        "mae_k": 0.2240583404522809,
+        "max_abs_k": 2.188657976075092
+      }
+    },
+    "cumulative": {
+      "q_gen_w": {
+        "e_legacy_j": 3031629.733001222,
+        "e_hc_j": 3023882.832739335,
+        "rel_diff_pct": 0.25553583201658625
+      },
+      "q_bp_w": {
+        "e_legacy_j": 7880910.2789535625,
+        "e_hc_j": 8121357.433400779,
+        "rel_diff_pct": 3.0510073828570907
+      },
+      "q_pf_w": {
+        "e_legacy_j": 8104532.0345157785,
+        "e_hc_j": 8356918.198343084,
+        "rel_diff_pct": 3.1141361740867617
+      },
+      "q_evap_cycle_w": {
+        "e_legacy_j": 9102773.34636562,
+        "e_hc_j": 9124721.62555185,
+        "rel_diff_pct": 0.24111639772941548
+      },
+      "q_evap_applied_w": {
+        "e_legacy_j": 9256070.628686486,
+        "e_hc_j": 9274766.02801196,
+        "rel_diff_pct": 0.20197986894713368
+      }
+    },
+    "all_states_finite": {
+      "legacy": true,
+      "heat_current": true
+    },
+    "solver_success_all_steps": {
+      "legacy": true,
+      "heat_current": true
+    },
+    "domain_invalid": {
+      "legacy": false,
+      "heat_current": false
+    },
+    "ledger": {
+      "legacy": {
+        "max_abs_residual_battery_w": 1.658554538153112e-08,
+        "max_abs_residual_plate_w": 6.566551746800542e-10,
+        "max_abs_residual_loop_transport_w": 2.217348082922399e-09,
+        "max_abs_residual_system_w": 1.6353624232579023e-08,
+        "max_abs_transport_flow_mismatch_w": 0.0
+      },
+      "heat_current": {
+        "max_abs_residual_battery_w": 2.5358531274832785e-08,
+        "max_abs_residual_plate_w": 4.729372449219227e-10,
+        "max_abs_residual_loop_transport_w": 1.171883923234418e-09,
+        "max_abs_residual_system_w": 2.53370444625034e-08,
+        "max_abs_transport_flow_mismatch_w": 0.0
+      }
+    },
+    "hc_transport_model": "fixed_inventory_mass_transport",
+    "hc_raw_energy_gate_passed": true,
+    "pipe_inventory_kg": {
+      "supply": 13.494600000000396,
+      "return": 17.99280000000053
+    }
+  },
+  {
+    "case_id": "V7_reverse_flow",
+    "description": "Reverse flow throughout (560 A, 4000 rpm).",
+    "runtime_s": 207.90369309997186,
+    "steps": 120,
+    "temp_errors": {
+      "t_b_avg_k": {
+        "rmse_k": 0.07811984730280629,
+        "mae_k": 0.07045655151937069,
+        "max_abs_k": 0.12003743630282315
+      },
+      "t_b_max_k": {
+        "rmse_k": 0.028548065418289394,
+        "mae_k": 0.024047682285584435,
+        "max_abs_k": 0.04183882593628141
+      },
+      "t_p_avg_k": {
+        "rmse_k": 0.1686474376499406,
+        "mae_k": 0.16575224050730336,
+        "max_abs_k": 0.3321242239164235
+      },
+      "t_p_max_k": {
+        "rmse_k": 0.06886032138969503,
+        "mae_k": 0.06450129701681344,
+        "max_abs_k": 0.18922829220520043
+      },
+      "tank_temperature_k": {
+        "rmse_k": 0.4617447669034211,
+        "mae_k": 0.4445974069861208,
+        "max_abs_k": 0.5317383931676432
+      },
+      "t_supply_k": {
+        "rmse_k": 0.3972996385012842,
+        "mae_k": 0.3764913437781156,
+        "max_abs_k": 0.46531092991574496
+      },
+      "t_return_k": {
+        "rmse_k": 0.46771513042228885,
+        "mae_k": 0.457629776839309,
+        "max_abs_k": 0.5311793651886774
+      },
+      "t_evap_out_k": {
+        "rmse_k": 0.4024361506806611,
+        "mae_k": 0.38662525174018564,
+        "max_abs_k": 0.46531092991574496
+      }
+    },
+    "cumulative": {
+      "q_gen_w": {
+        "e_legacy_j": 3032758.3124596667,
+        "e_hc_j": 3028559.970799087,
+        "rel_diff_pct": 0.13843311032505828
+      },
+      "q_bp_w": {
+        "e_legacy_j": 7795652.129960906,
+        "e_hc_j": 7940513.577958048,
+        "rel_diff_pct": 1.8582338665472111
+      },
+      "q_pf_w": {
+        "e_legacy_j": 8023184.782702061,
+        "e_hc_j": 8175054.989659399,
+        "rel_diff_pct": 1.8928918013301739
+      },
+      "q_evap_cycle_w": {
+        "e_legacy_j": 8823662.96385304,
+        "e_hc_j": 8930134.716485733,
+        "rel_diff_pct": 1.2066615992571785
+      },
+      "q_evap_applied_w": {
+        "e_legacy_j": 8992488.579575948,
+        "e_hc_j": 9090892.078123901,
+        "rel_diff_pct": 1.094285499249341
+      }
+    },
+    "all_states_finite": {
+      "legacy": true,
+      "heat_current": true
+    },
+    "solver_success_all_steps": {
+      "legacy": true,
+      "heat_current": true
+    },
+    "domain_invalid": {
+      "legacy": false,
+      "heat_current": false
+    },
+    "ledger": {
+      "legacy": {
+        "max_abs_residual_battery_w": 2.8849171940237284e-08,
+        "max_abs_residual_plate_w": 5.275069270282984e-10,
+        "max_abs_residual_loop_transport_w": 1.5406840248033404e-09,
+        "max_abs_residual_system_w": 2.85463102045469e-08,
+        "max_abs_transport_flow_mismatch_w": 0.0
+      },
+      "heat_current": {
+        "max_abs_residual_battery_w": 2.4445398594252765e-08,
+        "max_abs_residual_plate_w": 6.421032594516873e-10,
+        "max_abs_residual_loop_transport_w": 1.398120730300434e-09,
+        "max_abs_residual_system_w": 2.4067958293017e-08,
+        "max_abs_transport_flow_mismatch_w": 0.0
+      }
+    },
+    "hc_transport_model": "fixed_inventory_mass_transport",
+    "hc_raw_energy_gate_passed": true,
+    "pipe_inventory_kg": {
+      "supply": 13.494600000000396,
+      "return": 17.99280000000053
+    }
+  },
+  {
+    "case_id": "V8_flow_switch",
+    "description": "Forward 0-300 s, reverse 300-600 s.",
+    "runtime_s": 185.19948340003612,
+    "steps": 120,
+    "temp_errors": {
+      "t_b_avg_k": {
+        "rmse_k": 0.07721204177901993,
+        "mae_k": 0.06976131005831879,
+        "max_abs_k": 0.11819243792592715
+      },
+      "t_b_max_k": {
+        "rmse_k": 0.1337022804313742,
+        "mae_k": 0.08387584355373671,
+        "max_abs_k": 0.2805758999277259
+      },
+      "t_p_avg_k": {
+        "rmse_k": 0.16783577591351875,
+        "mae_k": 0.1636867223103489,
+        "max_abs_k": 0.33208923692444614
+      },
+      "t_p_max_k": {
+        "rmse_k": 0.08583601860968608,
+        "mae_k": 0.0744804719602404,
+        "max_abs_k": 0.4419208133426764
+      },
+      "tank_temperature_k": {
+        "rmse_k": 0.4582540820055493,
+        "mae_k": 0.43920575324779587,
+        "max_abs_k": 0.7480411254417731
+      },
+      "t_supply_k": {
+        "rmse_k": 0.39507937620813366,
+        "mae_k": 0.3720416239026681,
+        "max_abs_k": 0.6755654542346861
+      },
+      "t_return_k": {
+        "rmse_k": 0.46248370396283983,
+        "mae_k": 0.45197013045531426,
+        "max_abs_k": 0.681311180235582
+      },
+      "t_evap_out_k": {
+        "rmse_k": 0.4000320944419342,
+        "mae_k": 0.3819637534408315,
+        "max_abs_k": 0.6755654542346861
+      }
+    },
+    "cumulative": {
+      "q_gen_w": {
+        "e_legacy_j": 3033074.5346644935,
+        "e_hc_j": 3028918.1355219586,
+        "rel_diff_pct": 0.13703583921305454
+      },
+      "q_bp_w": {
+        "e_legacy_j": 7781479.288240973,
+        "e_hc_j": 7924227.781196877,
+        "rel_diff_pct": 1.8344647292401028
+      },
+      "q_pf_w": {
+        "e_legacy_j": 8008487.686299434,
+        "e_hc_j": 8158151.963760527,
+        "rel_diff_pct": 1.86882072275808
+      },
+      "q_evap_cycle_w": {
+        "e_legacy_j": 8814872.191320268,
+        "e_hc_j": 8919976.179140817,
+        "rel_diff_pct": 1.192348403236539
+      },
+      "q_evap_applied_w": {
+        "e_legacy_j": 8984869.941415817,
+        "e_hc_j": 9082092.146416795,
+        "rel_diff_pct": 1.0820658021195342
+      }
+    },
+    "all_states_finite": {
+      "legacy": true,
+      "heat_current": true
+    },
+    "solver_success_all_steps": {
+      "legacy": true,
+      "heat_current": true
+    },
+    "domain_invalid": {
+      "legacy": false,
+      "heat_current": false
+    },
+    "ledger": {
+      "legacy": {
+        "max_abs_residual_battery_w": 2.195884007960558e-08,
+        "max_abs_residual_plate_w": 4.383764462545514e-10,
+        "max_abs_residual_loop_transport_w": 1.7614638636587188e-09,
+        "max_abs_residual_system_w": 2.206871840826352e-08,
+        "max_abs_transport_flow_mismatch_w": 0.0
+      },
+      "heat_current": {
+        "max_abs_residual_battery_w": 1.679654815234244e-08,
+        "max_abs_residual_plate_w": 4.2928149923682213e-10,
+        "max_abs_residual_loop_transport_w": 1.1216343409614637e-09,
+        "max_abs_residual_system_w": 1.6880221664905548e-08,
+        "max_abs_transport_flow_mismatch_w": 0.0
+      }
+    },
+    "hc_transport_model": "fixed_inventory_mass_transport",
+    "hc_raw_energy_gate_passed": true,
+    "pipe_inventory_kg": {
+      "supply": 13.494600000000396,
+      "return": 17.99280000000053
+    }
+  },
+  {
+    "case_id": "V9_regd",
+    "description": "AGC RegD current profile, forward flow.",
+    "runtime_s": 184.7060343999765,
+    "steps": 120,
+    "temp_errors": {
+      "t_b_avg_k": {
+        "rmse_k": 0.077059484499172,
+        "mae_k": 0.0696331036618389,
+        "max_abs_k": 0.11668379205389101
+      },
+      "t_b_max_k": {
+        "rmse_k": 0.029165083236307825,
+        "mae_k": 0.024536342076101884,
+        "max_abs_k": 0.04308545508820316
+      },
+      "t_p_avg_k": {
+        "rmse_k": 0.16600446799776253,
+        "mae_k": 0.16312166432220085,
+        "max_abs_k": 0.3271971197290213
+      },
+      "t_p_max_k": {
+        "rmse_k": 0.07027987351933426,
+        "mae_k": 0.06585281500004593,
+        "max_abs_k": 0.18989066914696195
+      },
+      "tank_temperature_k": {
+        "rmse_k": 0.457025274383977,
+        "mae_k": 0.4397446390631761,
+        "max_abs_k": 0.5340168480174157
+      },
+      "t_supply_k": {
+        "rmse_k": 0.39363411101847423,
+        "mae_k": 0.37273991799102174,
+        "max_abs_k": 0.47115714645980233
+      },
+      "t_return_k": {
+        "rmse_k": 0.4625619813743552,
+        "mae_k": 0.4522665186273282,
+        "max_abs_k": 0.5332087166979704
+      },
+      "t_evap_out_k": {
+        "rmse_k": 0.3984310097828442,
+        "mae_k": 0.3824860010462582,
+        "max_abs_k": 0.47115714645980233
+      }
+    },
+    "cumulative": {
+      "q_gen_w": {
+        "e_legacy_j": 2096737.5239143379,
+        "e_hc_j": 2093760.9658001324,
+        "rel_diff_pct": 0.1419614081522535
+      },
+      "q_bp_w": {
+        "e_legacy_j": 7707166.333885844,
+        "e_hc_j": 7849249.868561657,
+        "rel_diff_pct": 1.8435249548348176
+      },
+      "q_pf_w": {
+        "e_legacy_j": 7950700.8365514185,
+        "e_hc_j": 8099625.051097389,
+        "rel_diff_pct": 1.8730954365850094
+      },
+      "q_evap_cycle_w": {
+        "e_legacy_j": 8798848.628313553,
+        "e_hc_j": 8903994.73235305,
+        "rel_diff_pct": 1.1949984421956206
+      },
+      "q_evap_applied_w": {
+        "e_legacy_j": 8973642.758929908,
+        "e_hc_j": 9071029.004530558,
+        "rel_diff_pct": 1.0852476326154
+      }
+    },
+    "all_states_finite": {
+      "legacy": true,
+      "heat_current": true
+    },
+    "solver_success_all_steps": {
+      "legacy": true,
+      "heat_current": true
+    },
+    "domain_invalid": {
+      "legacy": false,
+      "heat_current": false
+    },
+    "ledger": {
+      "legacy": {
+        "max_abs_residual_battery_w": 2.1700543584302068e-08,
+        "max_abs_residual_plate_w": 4.911271389573812e-10,
+        "max_abs_residual_loop_transport_w": 1.91630533663556e-09,
+        "max_abs_residual_system_w": 2.1624146029353142e-08,
+        "max_abs_transport_flow_mismatch_w": 0.0
+      },
+      "heat_current": {
+        "max_abs_residual_battery_w": 2.0052539184689522e-08,
+        "max_abs_residual_plate_w": 6.075424607843161e-10,
+        "max_abs_residual_loop_transport_w": 1.1266365618212149e-09,
+        "max_abs_residual_system_w": 2.076012606266886e-08,
+        "max_abs_transport_flow_mismatch_w": 0.0
+      }
+    },
+    "hc_transport_model": "fixed_inventory_mass_transport",
+    "hc_raw_energy_gate_passed": true,
+    "pipe_inventory_kg": {
+      "supply": 13.494600000000396,
+      "return": 17.99280000000053
+    }
+  }
+]
